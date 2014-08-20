@@ -344,6 +344,14 @@ int usleep (unsigned int useconds);
 
 extern int mkstemps(char *template, int suffix_len);
 
+/* Extended attribute functions */
+
+#ifndef XATTR_USER_PREFIX
+# define XATTR_USER_PREFIX "user."
+#endif
+
+extern int xattr_fget( int filedes, const char *name, void *value, size_t size );
+
 /* Interlocked functions */
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
