@@ -274,7 +274,6 @@ TEB *thread_init(void)
     TEB *teb;
     void *addr;
     SIZE_T size;
-    LARGE_INTEGER now;
     NTSTATUS status;
     struct ntdll_thread_data *thread_data;
 
@@ -349,7 +348,23 @@ TEB *thread_init(void)
     debug_init();
     set_process_name( __wine_main_argc, __wine_main_argv );
 
-    /* initialize time values in user_shared_data */
+	/* initialize user_shared_data */
+    __wine_user_shared_data();
+    fill_cpu_info();
+
+    return teb;
+}
+
+
+
+/**************************************************************************
+ *  __wine_user_shared_data   (NTDLL.@)
+ *
+ * Update user shared data and return the address of the structure.
+ */
+BYTE* CDECL __wine_user_shared_data(void)
+{
+    LARGE_INTEGER now;
     NtQuerySystemTime( &now );
     user_shared_data->SystemTime.LowPart = now.u.LowPart;
     user_shared_data->SystemTime.High1Time = user_shared_data->SystemTime.High2Time = now.u.HighPart;
@@ -357,9 +372,8 @@ TEB *thread_init(void)
     user_shared_data->u.TickCount.High2Time = user_shared_data->u.TickCount.High1Time;
     user_shared_data->TickCountLowDeprecated = user_shared_data->u.TickCount.LowPart;
     user_shared_data->TickCountMultiplier = 1 << 24;
-    fill_cpu_info();
 
-    return teb;
+    return (BYTE *)user_shared_data;
 }
 
 BOOL read_process_memory_stats(int unix_pid, VM_COUNTERS *pvmi)
