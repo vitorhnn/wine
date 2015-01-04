@@ -429,6 +429,7 @@ static HANDLE open_exe_file( const WCHAR *name, BOOL *is_64bit )
  */
 static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, int buflen, HANDLE *handle )
 {
+    WCHAR cur_dir[MAX_PATH];
     WCHAR *load_path;
     BOOL ret;
 
@@ -436,7 +437,10 @@ static BOOL find_exe_file( const WCHAR *name, WCHAR *buffer, int buflen, HANDLE 
 
     TRACE("looking for %s in %s\n", debugstr_w(name), debugstr_w(load_path) );
 
-    ret = (SearchPathW( load_path, name, exeW, buflen, buffer, NULL ) ||
+    ret = (NeedCurrentDirectoryForExePathW( name ) && GetCurrentDirectoryW( MAX_PATH, cur_dir) &&
+           SearchPathW( cur_dir, name, exeW, buflen, buffer, NULL )) ||
+           /* not found in the working directory, try the system search path */
+           (SearchPathW( load_path, name, exeW, buflen, buffer, NULL ) ||
            /* no builtin found, try native without extension in case it is a Unix app */
            SearchPathW( load_path, name, NULL, buflen, buffer, NULL ));
     RtlReleasePath( load_path );
