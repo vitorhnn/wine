@@ -204,6 +204,8 @@ static inline void init_thread_structure( struct thread *thread )
     thread->desc            = NULL;
     thread->desc_len        = 0;
     thread->exit_poll       = NULL;
+    thread->shm_fd          = -1;
+    thread->shm             = NULL;
 
     thread->creation_time = current_time;
     thread->exit_time     = 0;
@@ -339,7 +341,10 @@ static void cleanup_thread( struct thread *thread )
             thread->inflight[i].client = thread->inflight[i].server = -1;
         }
     }
+
     free( thread->desc );
+    release_shared_memory( thread->shm_fd, thread->shm, sizeof(*thread->shm) );
+
     thread->req_data = NULL;
     thread->reply_data = NULL;
     thread->request_fd = NULL;
@@ -350,6 +355,8 @@ static void cleanup_thread( struct thread *thread )
     thread->desktop = 0;
     thread->desc = NULL;
     thread->desc_len = 0;
+    thread->shm_fd = -1;
+    thread->shm = NULL;
 }
 
 /* destroy a thread when its refcount is 0 */
