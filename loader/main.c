@@ -50,6 +50,30 @@
 /* the preloader will set this variable */
 const struct wine_preload_info *wine_main_preload_info = NULL;
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+
+static const char *get_macho_library_path( const char *libname )
+{
+    unsigned int path_len, libname_len = strlen( libname );
+    uint32_t i, count = _dyld_image_count();
+
+    for (i = 0; i < count; i++)
+    {
+       const char *path = _dyld_get_image_name( i );
+        if (!path) continue;
+
+        path_len = strlen( path );
+        if (path_len < libname_len + 1) continue;
+        if (path[path_len - libname_len - 1] != '/') continue;
+        if (strcmp( path + path_len - libname_len, libname )) continue;
+
+        return path;
+    }
+    return NULL;
+}
+#endif
+
 /***********************************************************************
  *           check_command_line
  *
@@ -146,7 +170,11 @@ static void check_command_line( int argc, char *argv[] )
                 else
             #endif
                 {
-                    printf( "%s: found\n", *wine_libs );
+                    const char *path = NULL;
+                #ifdef __APPLE__
+                    path = get_macho_library_path( *wine_libs );
+                #endif
+                    printf( "%s: %s\n", *wine_libs, path ? path : "found");
                 }
                 wine_dlclose( lib_handle, NULL, 0 );
             }
