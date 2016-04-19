@@ -105,6 +105,8 @@ static WCHAR winevdm[] = {'C',':','\\','w','i','n','d','o','w','s',
 
 static const char * const cpu_names[] = { "x86", "x86_64", "PowerPC", "ARM", "ARM64" };
 
+static DEP_SYSTEM_POLICY_TYPE system_DEP_policy = OptIn;
+
 static void exec_process( LPCWSTR name );
 
 /* return values for get_binary_info */
@@ -2867,9 +2869,35 @@ DEP_SYSTEM_POLICY_TYPE WINAPI GetSystemDEPPolicy(void)
  */
 BOOL WINAPI SetProcessDEPPolicy(DWORD newDEP)
 {
-    FIXME("(%d): stub\n", newDEP);
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-    return FALSE;
+    ULONG dep_flags = 0;
+    NTSTATUS status;
+
+    TRACE("(%d)\n", newDEP);
+
+    if (is_wow64 || (system_DEP_policy != OptIn && system_DEP_policy != OptOut) )
+    {
+        SetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
+    }
+
+    if (!newDEP)
+        dep_flags = MEM_EXECUTE_OPTION_ENABLE;
+    else if (newDEP & PROCESS_DEP_ENABLE)
+        dep_flags = MEM_EXECUTE_OPTION_DISABLE|MEM_EXECUTE_OPTION_PERMANENT;
+    else
+    {
+        SetLastError(ERROR_ACCESS_DENIED);
+        return FALSE;
+    }
+
+    if (newDEP & PROCESS_DEP_DISABLE_ATL_THUNK_EMULATION)
+        dep_flags |= MEM_EXECUTE_OPTION_DISABLE_THUNK_EMULATION;
+
+    status = NtSetInformationProcess( GetCurrentProcess(), ProcessExecuteFlags,
+                                        &dep_flags, sizeof(dep_flags) );
+
+    if (status) SetLastError( RtlNtStatusToDosError(status) );
+    return !status;
 }
 
 /**********************************************************************
