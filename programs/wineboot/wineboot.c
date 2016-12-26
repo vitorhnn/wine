@@ -71,6 +71,7 @@
 #include <shellapi.h>
 #include <setupapi.h>
 #include <ntsecapi.h>
+#include <wininet.h>
 #include <newdev.h>
 #include "resource.h"
 
@@ -699,6 +700,13 @@ static void create_volatile_environment_registry_key(void)
 
     set_reg_value( hkey, SessionNameW, ConsoleW );
     RegCloseKey( hkey );
+}
+
+static void create_proxy_settings(void)
+{
+    HINTERNET inet;
+    inet = InternetOpenA( "Wine", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 );
+    if (inet) InternetCloseHandle( inet );
 }
 
 static void create_etc_stub_files(void)
@@ -1612,6 +1620,7 @@ int __cdecl main( int argc, char *argv[] )
     if (init || update) update_wineprefix( update );
 
     create_volatile_environment_registry_key();
+    create_proxy_settings();
 
     ProcessRunKeys( HKEY_LOCAL_MACHINE, RunOnceW, TRUE, TRUE );
 
