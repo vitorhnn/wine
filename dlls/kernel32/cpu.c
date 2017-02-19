@@ -151,7 +151,6 @@ BOOL WINAPI K32GetPerformanceInfo(PPERFORMANCE_INFORMATION info, DWORD size)
 {
     SYSTEM_PERFORMANCE_INFORMATION perf;
     SYSTEM_BASIC_INFORMATION basic;
-    SYSTEM_PROCESS_INFORMATION *process, *spi;
     DWORD info_size;
     NTSTATUS status;
 
@@ -180,34 +179,19 @@ BOOL WINAPI K32GetPerformanceInfo(PPERFORMANCE_INFORMATION info, DWORD size)
     info->KernelNonpaged     = perf.NonPagedPoolUsage;
     info->PageSize           = basic.PageSize;
 
-    /* fields from SYSTEM_PROCESS_INFORMATION */
-    NtQuerySystemInformation( SystemProcessInformation, NULL, 0, &info_size );
-    for (;;)
+    SERVER_START_REQ( get_system_info )
     {
-        process = HeapAlloc( GetProcessHeap(), 0, info_size );
-        if (!process)
+        status = wine_server_call( req );
+        if (!status)
         {
-            SetLastError( ERROR_OUTOFMEMORY );
-            return FALSE;
+            info->ProcessCount = reply->processes;
+            info->HandleCount = reply->handles;
+            info->ThreadCount = reply->threads;
         }
-        status = NtQuerySystemInformation( SystemProcessInformation, process, info_size, &info_size );
-        if (!status) break;
-        HeapFree( GetProcessHeap(), 0, process );
-        if (status != STATUS_INFO_LENGTH_MISMATCH)
-            goto err;
     }
+    SERVER_END_REQ;
 
-    info->HandleCount = info->ProcessCount = info->ThreadCount = 0;
-    spi = process;
-    for (;;)
-    {
-        info->ProcessCount++;
-        info->HandleCount += spi->HandleCount;
-        info->ThreadCount += spi->dwThreadCount;
-        if (spi->NextEntryOffset == 0) break;
-        spi = (SYSTEM_PROCESS_INFORMATION *)((char *)spi + spi->NextEntryOffset);
-    }
-    HeapFree( GetProcessHeap(), 0, process );
+    if (status) goto err;
     return TRUE;
 
 err:
