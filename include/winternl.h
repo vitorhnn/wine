@@ -2276,8 +2276,8 @@ typedef struct _LDR_MODULE
     ULONG               Flags;
     SHORT               LoadCount;
     SHORT               TlsIndex;
-    HANDLE              SectionHandle;
     ULONG               CheckSum;
+    LIST_ENTRY          HashLinks;
     ULONG               TimeDateStamp;
     HANDLE              ActivationContext;
     PVOID               PatchInformation;
@@ -2287,6 +2287,9 @@ typedef struct _LDR_MODULE
     PVOID               ContextInformation;
     ULONG_PTR           OriginalBase;
     LARGE_INTEGER       LoadTime;
+
+    /* Not part of Win7 but used by Wine */
+    HANDLE              SectionHandle;
 } LDR_MODULE, *PLDR_MODULE;
 
 typedef struct _LDR_DLL_LOADED_NOTIFICATION_DATA
