@@ -91,6 +91,9 @@ extern void init_user_process_params( SIZE_T data_size ) DECLSPEC_HIDDEN;
 extern char **build_envp( const WCHAR *envW ) DECLSPEC_HIDDEN;
 extern NTSTATUS restart_process( RTL_USER_PROCESS_PARAMETERS *params, NTSTATUS status ) DECLSPEC_HIDDEN;
 
+/* token */
+extern HANDLE CDECL __wine_create_default_token(BOOL admin);
+
 /* server support */
 extern timeout_t server_start_time DECLSPEC_HIDDEN;
 extern unsigned int server_cpus DECLSPEC_HIDDEN;
