@@ -2037,7 +2037,13 @@ static void load_builtin_callback( void *module, const char *filename )
     SERVER_END_REQ;
 
     /* setup relay debugging entry points */
-    if (TRACE_ON(relay)) RELAY_SetupDLL( module );
+#ifdef __aarch64__
+    /* Always enable relay entry points on aarch64, to allow restoring
+     * the TEB to x18. */
+#else
+    if (TRACE_ON(relay))
+#endif
+        RELAY_SetupDLL( module );
 }
 
 
