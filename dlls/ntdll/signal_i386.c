@@ -96,6 +96,13 @@ typedef struct
     BYTE Reserved4[96];
 } XMM_SAVE_AREA32;
 
+#ifdef __GNUC__
+/* It is not valid to access %gs before init_handler has been called. */
+#define SIGNALFUNC __attribute__((__optimize__("-fno-stack-protector")))
+#else
+#define SIGNALFUNC
+#endif
+
 /***********************************************************************
  * signal context platform-specific definitions
  */
@@ -627,7 +634,7 @@ static inline int has_fpux(void)
  *
  * Get the current teb based on the stack pointer.
  */
-static inline TEB *get_current_teb(void)
+static inline TEB * SIGNALFUNC get_current_teb(void)
 {
     unsigned long esp;
     __asm__("movl %%esp,%0" : "=g" (esp) );
@@ -863,7 +870,7 @@ __ASM_GLOBAL_FUNC( clear_alignment_flag,
  * Handler initialization when the full context is not needed.
  * Return the stack pointer to use for pushing the exception data.
  */
-static inline void *init_handler( const ucontext_t *sigcontext, WORD *fs, WORD *gs )
+static inline void * SIGNALFUNC init_handler( const ucontext_t *sigcontext, WORD *fs, WORD *gs )
 {
     TEB *teb = get_current_teb();
 
@@ -1885,7 +1892,7 @@ static struct stack_layout *setup_exception_record( ucontext_t *sigcontext, void
  * sigcontext so that the return from the signal handler will call
  * the raise function.
  */
-static struct stack_layout *setup_exception( ucontext_t *sigcontext )
+static struct stack_layout * SIGNALFUNC setup_exception( ucontext_t *sigcontext )
 {
     WORD fs, gs;
     void *stack = init_handler( sigcontext, &fs, &gs );
@@ -2013,7 +2020,7 @@ static BOOL handle_interrupt( unsigned int interrupt, ucontext_t *sigcontext, st
  * Handler for SIGSEGV and related errors. Used only during the initialization
  * of the process to handle virtual faults.
  */
-static void segv_handler_early( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC segv_handler_early( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     WORD fs, gs;
     ucontext_t *context = sigcontext;
@@ -2037,7 +2044,7 @@ static void segv_handler_early( int signal, siginfo_t *siginfo, void *sigcontext
  *
  * Handler for SIGSEGV and related errors.
  */
-static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     WORD fs, gs;
     struct stack_layout *stack;
@@ -2156,7 +2163,7 @@ done:
  *
  * Handler for SIGTRAP.
  */
-static void trap_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC trap_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     ucontext_t *context = sigcontext;
     struct stack_layout *stack = setup_exception( context );
@@ -2198,7 +2205,7 @@ static void trap_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  *
  * Handler for SIGFPE.
  */
-static void fpe_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC fpe_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     ucontext_t *context = sigcontext;
     struct stack_layout *stack = setup_exception( context );
@@ -2246,7 +2253,7 @@ static void fpe_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  *
  * FIXME: should not be calling external functions on the signal stack.
  */
-static void int_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC int_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     WORD fs, gs;
     void *stack_ptr = init_handler( sigcontext, &fs, &gs );
@@ -2263,7 +2270,7 @@ static void int_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  *
  * Handler for SIGABRT.
  */
-static void abrt_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC abrt_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     struct stack_layout *stack = setup_exception( sigcontext );
     stack->rec.ExceptionCode  = EXCEPTION_WINE_ASSERTION;
@@ -2277,7 +2284,7 @@ static void abrt_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  *
  * Handler for SIGQUIT.
  */
-static void quit_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC quit_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     WORD fs, gs;
     init_handler( sigcontext, &fs, &gs );
@@ -2290,7 +2297,7 @@ static void quit_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  *
  * Handler for SIGUSR1, used to signal a thread that it got suspended.
  */
-static void usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
+static void SIGNALFUNC usr1_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     CONTEXT context;
     WORD fs, gs;
