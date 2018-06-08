@@ -34,6 +34,7 @@
 #include "windef.h"
 #include "winternl.h"
 #include "ntdll_misc.h"
+#include "esync.h"
 #include "wine/server.h"
 #include "wine/exception.h"
 #include "wine/unicode.h"
@@ -387,6 +388,9 @@ NTSTATUS close_handle( HANDLE handle )
 {
     NTSTATUS ret;
     int fd = server_remove_fd_from_cache( handle );
+
+    if (do_esync())
+        esync_close( handle );
 
     SERVER_START_REQ( close_handle )
     {
