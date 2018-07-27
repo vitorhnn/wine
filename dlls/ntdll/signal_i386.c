@@ -730,6 +730,7 @@ static NTSTATUS call_stack_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
     return STATUS_UNHANDLED_EXCEPTION;
 }
 
+NTSTATUS WINAPI __syscall_NtContinue( CONTEXT *context, BOOLEAN alert );
 
 /*******************************************************************
  *		raise_exception
@@ -794,7 +795,7 @@ static NTSTATUS raise_exception( EXCEPTION_RECORD *rec, CONTEXT *context, BOOL f
         NtTerminateProcess( NtCurrentProcess(), rec->ExceptionCode );
     }
 done:
-    return NtSetContextThread( GetCurrentThread(), context );
+    return __syscall_NtContinue( context, FALSE );
 }
 
 
