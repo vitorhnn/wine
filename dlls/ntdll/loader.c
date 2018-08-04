@@ -4405,8 +4405,7 @@ void __wine_process_init(void)
     peb->ProcessHeap = RtlCreateHeap( HEAP_GROWABLE, NULL, 0, 0, NULL, NULL );
     peb->LoaderLock = &loader_section;
 
-    if (do_esync())
-        esync_init();
+    esync_init();
 
     init_directories();
     init_user_process_params( info_size );
