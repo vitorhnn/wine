@@ -4441,18 +4441,20 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, LPVOID reserved )
     return TRUE;
 }
 
+void *Wow64Transition;
 
 /***********************************************************************
  *           __wine_process_init
  */
 void __wine_process_init(void)
 {
+    static const WCHAR wow64cpuW[] = {'w','o','w','6','4','c','p','u','.','d','l','l',0};
     static const WCHAR kernel32W[] = {'\\','?','?','\\','C',':','\\','w','i','n','d','o','w','s','\\',
                                       's','y','s','t','e','m','3','2','\\',
                                       'k','e','r','n','e','l','3','2','.','d','l','l',0};
     RTL_USER_PROCESS_PARAMETERS *params;
     ACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION runlevel;
-    WINE_MODREF *wm;
+    WINE_MODREF *wm, *wow64cpu_wm;
     NTSTATUS status;
     ANSI_STRING func_name;
     UNICODE_STRING nt_name;
@@ -4498,6 +4500,13 @@ void __wine_process_init(void)
         MESSAGE( "wine: could not load kernel32.dll, status %x\n", status );
         exit(1);
     }
+
+    RtlInitUnicodeString( &nt_name, wow64cpuW );
+    if ((status = load_builtin_dll( NULL, &nt_name, 0, 0, &wow64cpu_wm )) == STATUS_SUCCESS)
+        Wow64Transition = wow64cpu_wm->ldr.BaseAddress;
+    else
+        WARN( "could not load wow64cpu.dll, status %#x\n", status );
+
     RtlInitAnsiString( &func_name, "__wine_kernel_init" );
     if ((status = LdrGetProcedureAddress( wm->ldr.BaseAddress, &func_name,
                                           0, (void **)&init_func )) != STATUS_SUCCESS)
