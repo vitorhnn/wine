@@ -3250,6 +3250,25 @@ found:
 }
 
 
+static NTSTATUS get_working_set_ex( HANDLE process, LPCVOID addr,
+                                    MEMORY_WORKING_SET_EX_INFORMATION *info,
+                                    SIZE_T len, SIZE_T *res_len )
+{
+    MEMORY_WORKING_SET_EX_INFORMATION *p;
+
+    for (p = info; (UINT_PTR)(p + 1) <= (UINT_PTR)info + len; p++)
+    {
+        FIXME("(VirtualAddress=%p) Unimplemented.\n", p->VirtualAddress);
+        /* FIXME Mark all addresses as invalid. */
+        p->VirtualAttributes.Valid = 0;
+    }
+
+    if (res_len)
+        *res_len = (UINT_PTR)p - (UINT_PTR)info;
+    return STATUS_SUCCESS;
+}
+
+
 #define UNIMPLEMENTED_INFO_CLASS(c) \
     case c: \
         FIXME("(process=%p,addr=%p) Unimplemented information class: " #c "\n", process, addr); \
@@ -3273,6 +3292,9 @@ NTSTATUS WINAPI NtQueryVirtualMemory( HANDLE process, LPCVOID addr,
 
         case MemorySectionName:
             return get_section_name( process, addr, buffer, len, res_len );
+
+        case MemoryWorkingSetExInformation:
+            return get_working_set_ex( process, addr, buffer, len, res_len );
 
         UNIMPLEMENTED_INFO_CLASS(MemoryWorkingSetList);
         UNIMPLEMENTED_INFO_CLASS(MemoryBasicVlmInformation);
