@@ -741,3 +741,309 @@ NTSTATUS WINAPI NtSuspendProcess( HANDLE handle )
     FIXME("stub: %p\n", handle);
     return STATUS_NOT_IMPLEMENTED;
 }
+
+#define NE_FFLAGS_LIBMODULE  0x8000
+
+enum binary_type
+{
+    BINARY_UNKNOWN = 0,
+    BINARY_PE,
+    BINARY_WIN16,
+    BINARY_OS216,
+    BINARY_DOS,
+    BINARY_UNIX_EXE,
+    BINARY_UNIX_LIB
+};
+
+#define BINARY_FLAG_DLL     0x01
+#define BINARY_FLAG_64BIT   0x02
+#define BINARY_FLAG_FAKEDLL 0x04
+
+struct binary_info
+{
+    enum binary_type type;
+    DWORD            arch;
+    DWORD            flags;
+    ULONGLONG        res_start;
+    ULONGLONG        res_end;
+};
+
+static DWORD MODULE_Decide_OS2_OldWin(HANDLE hfile, const IMAGE_DOS_HEADER *mz, const IMAGE_OS2_HEADER *ne)
+{
+    DWORD ret = BINARY_OS216;
+    LPWORD modtab = NULL;
+    LPSTR nametab = NULL;
+    int i;
+    LARGE_INTEGER li;
+    IO_STATUS_BLOCK io;
+
+    /* read modref table */
+    li.QuadPart = (mz->e_lfanew + ne->ne_modtab);
+    if ( (!(modtab = RtlAllocateHeap( GetProcessHeap(), 0, ne->ne_cmod*sizeof(WORD))))
+      || (NtReadFile(hfile, NULL, NULL, NULL, &io, modtab, ne->ne_cmod*sizeof(WORD), &li, NULL))
+      || (io.Information != ne->ne_cmod*sizeof(WORD)) )
+	goto done;
+
+    /* read imported names table */
+    li.QuadPart = (mz->e_lfanew + ne->ne_imptab);
+    if ( (!(nametab = RtlAllocateHeap( GetProcessHeap(), 0, ne->ne_enttab - ne->ne_imptab)))
+      || (NtReadFile(hfile, NULL, NULL, NULL, &io, nametab, ne->ne_enttab - ne->ne_imptab, &li, NULL))
+      || (io.Information != ne->ne_enttab - ne->ne_imptab) )
+	goto done;
+
+    for (i=0; i < ne->ne_cmod; i++)
+    {
+        LPSTR module = &nametab[modtab[i]];
+        TRACE("modref: %.*s\n", module[0], &module[1]);
+        if (!(strncmp(&module[1], "KERNEL", module[0])))
+        { /* very old Windows file */
+            MESSAGE("This seems to be a very old (pre-3.0) Windows executable. Expect crashes, especially if this is a real-mode binary !\n");
+            ret = BINARY_WIN16;
+            break;
+        }
+    }
+
+done:
+    RtlFreeHeap( GetProcessHeap(), 0, modtab);
+    RtlFreeHeap( GetProcessHeap(), 0, nametab);
+    return ret;
+}
+
+/***********************************************************************
+ *           get_binary_info
+ */
+void get_binary_info( HANDLE hfile, struct binary_info *info )
+{
+    union
+    {
+        struct
+        {
+            unsigned char magic[4];
+            unsigned char class;
+            unsigned char data;
+            unsigned char ignored1[10];
+            unsigned short type;
+            unsigned short machine;
+            unsigned char ignored2[8];
+            unsigned int phoff;
+            unsigned char ignored3[12];
+            unsigned short phnum;
+        } elf;
+        struct
+        {
+            unsigned char magic[4];
+            unsigned char class;
+            unsigned char data;
+            unsigned char ignored1[10];
+            unsigned short type;
+            unsigned short machine;
+            unsigned char ignored2[12];
+            unsigned __int64 phoff;
+            unsigned char ignored3[16];
+            unsigned short phnum;
+        } elf64;
+        struct
+        {
+            unsigned int magic;
+            unsigned int cputype;
+            unsigned int cpusubtype;
+            unsigned int filetype;
+        } macho;
+        IMAGE_DOS_HEADER mz;
+    } header;
+
+    IO_STATUS_BLOCK io;
+    LARGE_INTEGER li;
+    NTSTATUS status;
+
+    memset( info, 0, sizeof(*info) );
+
+    /* Seek to the start of the file and read the header information. */
+    li.QuadPart = 0;
+    if( (status = NtReadFile(hfile, NULL, NULL, NULL, &io, &header, sizeof(header), &li, NULL)) ) return;
+
+    if (!memcmp( header.elf.magic, "\177ELF", 4 ))
+    {
+#ifdef WORDS_BIGENDIAN
+        BOOL byteswap = (header.elf.data == 1);
+#else
+        BOOL byteswap = (header.elf.data == 2);
+#endif
+        if (header.elf.class == 2) info->flags |= BINARY_FLAG_64BIT;
+        if (byteswap)
+        {
+            header.elf.type = RtlUshortByteSwap( header.elf.type );
+            header.elf.machine = RtlUshortByteSwap( header.elf.machine );
+        }
+        switch(header.elf.type)
+        {
+        case 2:
+            info->type = BINARY_UNIX_EXE;
+            break;
+        case 3:
+        {
+            LARGE_INTEGER phoff;
+            unsigned short phnum;
+            unsigned int type;
+            if (header.elf.class == 2)
+            {
+                phoff.QuadPart = byteswap ? RtlUlonglongByteSwap( header.elf64.phoff ) : header.elf64.phoff;
+                phnum = byteswap ? RtlUshortByteSwap( header.elf64.phnum ) : header.elf64.phnum;
+            }
+            else
+            {
+                phoff.QuadPart = byteswap ? RtlUlongByteSwap( header.elf.phoff ) : header.elf.phoff;
+                phnum = byteswap ? RtlUshortByteSwap( header.elf.phnum ) : header.elf.phnum;
+            }
+            while (phnum--)
+            {
+                if ( NtReadFile( hfile, NULL, NULL, NULL, &io, &type, sizeof(type), &phoff, NULL ) ) return;
+                if (byteswap) type = RtlUlongByteSwap( type );
+                if (type == 3)
+                {
+                    info->type = BINARY_UNIX_EXE;
+                    break;
+                }
+                phoff.QuadPart += (header.elf.class == 2) ? 56 : 32;
+            }
+            if (!info->type) info->type = BINARY_UNIX_LIB;
+            break;
+        }
+        default:
+            return;
+        }
+        switch(header.elf.machine)
+        {
+        case 3:   info->arch = IMAGE_FILE_MACHINE_I386; break;
+        case 20:  info->arch = IMAGE_FILE_MACHINE_POWERPC; break;
+        case 40:  info->arch = IMAGE_FILE_MACHINE_ARMNT; break;
+        case 50:  info->arch = IMAGE_FILE_MACHINE_IA64; break;
+        case 62:  info->arch = IMAGE_FILE_MACHINE_AMD64; break;
+        case 183: info->arch = IMAGE_FILE_MACHINE_ARM64; break;
+        }
+    }
+    /* Mach-o File with Endian set to Big Endian or Little Endian */
+    else if (header.macho.magic == 0xfeedface || header.macho.magic == 0xcefaedfe ||
+             header.macho.magic == 0xfeedfacf || header.macho.magic == 0xcffaedfe)
+    {
+        if ((header.macho.cputype >> 24) == 1) info->flags |= BINARY_FLAG_64BIT;
+        if (header.macho.magic == 0xcefaedfe || header.macho.magic == 0xcffaedfe)
+        {
+            header.macho.filetype = RtlUlongByteSwap( header.macho.filetype );
+            header.macho.cputype = RtlUlongByteSwap( header.macho.cputype );
+        }
+        switch(header.macho.filetype)
+        {
+        case 2: info->type = BINARY_UNIX_EXE; break;
+        case 8: info->type = BINARY_UNIX_LIB; break;
+        }
+        switch(header.macho.cputype)
+        {
+        case 0x00000007: info->arch = IMAGE_FILE_MACHINE_I386; break;
+        case 0x01000007: info->arch = IMAGE_FILE_MACHINE_AMD64; break;
+        case 0x0000000c: info->arch = IMAGE_FILE_MACHINE_ARMNT; break;
+        case 0x0100000c: info->arch = IMAGE_FILE_MACHINE_ARM64; break;
+        case 0x00000012: info->arch = IMAGE_FILE_MACHINE_POWERPC; break;
+        }
+    }
+    /* Not ELF, try DOS */
+    else if (header.mz.e_magic == IMAGE_DOS_SIGNATURE)
+    {
+        union
+        {
+            IMAGE_OS2_HEADER os2;
+            IMAGE_NT_HEADERS32 nt;
+            IMAGE_NT_HEADERS64 nt64;
+        } ext_header;
+
+        /* We do have a DOS image so we will now try to seek into
+         * the file by the amount indicated by the field
+         * "Offset to extended header" and read in the
+         * "magic" field information at that location.
+         * This will tell us if there is more header information
+         * to read or not.
+         */
+        info->type = BINARY_DOS;
+        info->arch = IMAGE_FILE_MACHINE_I386;
+        li.QuadPart = header.mz.e_lfanew;
+        if (NtReadFile(hfile, NULL, NULL, NULL, &io, &ext_header, sizeof(ext_header), &li, NULL)) return;
+
+
+        /* Reading the magic field succeeded so
+         * we will try to determine what type it is.
+         */
+        if (!memcmp( &ext_header.nt.Signature, "PE\0\0", 4 ))
+        {
+            if (io.Information >= sizeof(ext_header.nt.FileHeader))
+            {
+                static const char fakedll_signature[] = "Wine placeholder DLL";
+                char buffer[sizeof(fakedll_signature)];
+
+                info->type = BINARY_PE;
+                info->arch = ext_header.nt.FileHeader.Machine;
+                if (ext_header.nt.FileHeader.Characteristics & IMAGE_FILE_DLL)
+                    info->flags |= BINARY_FLAG_DLL;
+                if (io.Information < sizeof(ext_header))  /* clear remaining part of header if missing */
+                    memset( (char *)&ext_header + io.Information, 0, sizeof(ext_header) - io.Information );
+                switch (ext_header.nt.OptionalHeader.Magic)
+                {
+                case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
+                    info->res_start = ext_header.nt.OptionalHeader.ImageBase;
+                    info->res_end = info->res_start + ext_header.nt.OptionalHeader.SizeOfImage;
+                    break;
+                case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+                    info->res_start = ext_header.nt64.OptionalHeader.ImageBase;
+                    info->res_end = info->res_start + ext_header.nt64.OptionalHeader.SizeOfImage;
+                    info->flags |= BINARY_FLAG_64BIT;
+                    break;
+                }
+
+                li.QuadPart = sizeof(header.mz);
+                if (header.mz.e_lfanew >= sizeof(header.mz) + sizeof(fakedll_signature) &&
+                    !NtReadFile( hfile, NULL, NULL, NULL, &io, buffer, sizeof(fakedll_signature), &li, NULL ) &&
+                    io.Information == sizeof(fakedll_signature) &&
+                    !memcmp( buffer, fakedll_signature, sizeof(fakedll_signature) ))
+                {
+                    info->flags |= BINARY_FLAG_FAKEDLL;
+                }
+            }
+        }
+        else if (!memcmp( &ext_header.os2.ne_magic, "NE", 2 ))
+        {
+            /* This is a Windows executable (NE) header.  This can
+             * mean either a 16-bit OS/2 or a 16-bit Windows or even a
+             * DOS program (running under a DOS extender).  To decide
+             * which, we'll have to read the NE header.
+             */
+            if (io.Information >= sizeof(ext_header.os2))
+            {
+                if (ext_header.os2.ne_flags & NE_FFLAGS_LIBMODULE) info->flags |= BINARY_FLAG_DLL;
+                switch ( ext_header.os2.ne_exetyp )
+                {
+                case 1:  info->type = BINARY_OS216; break; /* OS/2 */
+                case 2:  info->type = BINARY_WIN16; break; /* Windows */
+                case 3:  info->type = BINARY_DOS; break; /* European MS-DOS 4.x */
+                case 4:  info->type = BINARY_WIN16; break; /* Windows 386; FIXME: is this 32bit??? */
+                case 5:  info->type = BINARY_DOS; break; /* BOSS, Borland Operating System Services */
+                /* other types, e.g. 0 is: "unknown" */
+                default: info->type = MODULE_Decide_OS2_OldWin(hfile, &header.mz, &ext_header.os2); break;
+                }
+            }
+        }
+    }
+}
+
+/**********************************************************************
+ *           RtlCreateUserProcess [NTDLL.@]
+ */
+NTSTATUS WINAPI RtlCreateUserProcess(UNICODE_STRING *path, ULONG attributes, RTL_USER_PROCESS_PARAMETERS *parameters,
+                                     SECURITY_DESCRIPTOR *process_descriptor, SECURITY_DESCRIPTOR *thread_descriptor,
+                                     HANDLE parent, BOOLEAN inherit, HANDLE debug, HANDLE exception,
+                                     RTL_USER_PROCESS_INFORMATION *info)
+{
+    FIXME("(%p %u %p %p %p %p %d %p %p %p): stub\n", path, attributes, parameters, process_descriptor, thread_descriptor,
+                                     parent, inherit, debug, exception, info);
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+
