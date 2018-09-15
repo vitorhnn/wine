@@ -50,6 +50,9 @@
 #ifdef HAVE_SYS_WAIT_H
 #include <sys/wait.h>
 #endif
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
 
@@ -1040,6 +1043,22 @@ void get_binary_info( HANDLE hfile, struct binary_info *info )
     }
 }
 
+static int get_process_cpu( const WCHAR *filename, const struct binary_info *binary_info )
+{
+    switch (binary_info->arch)
+    {
+    case IMAGE_FILE_MACHINE_I386:    return CPU_x86;
+    case IMAGE_FILE_MACHINE_AMD64:   return CPU_x86_64;
+    case IMAGE_FILE_MACHINE_POWERPC: return CPU_POWERPC;
+    case IMAGE_FILE_MACHINE_ARM:
+    case IMAGE_FILE_MACHINE_THUMB:
+    case IMAGE_FILE_MACHINE_ARMNT:   return CPU_ARM;
+    case IMAGE_FILE_MACHINE_ARM64:   return CPU_ARM64;
+    }
+    ERR( "%s uses unsupported architecture (%04x)\n", debugstr_w(filename), binary_info->arch );
+    return -1;
+}
+
 static startup_info_t *create_startup_info(PRTL_USER_PROCESS_PARAMETERS startup, DWORD *info_size)
 {
     const RTL_USER_PROCESS_PARAMETERS *cur_params;
@@ -1376,6 +1395,177 @@ static pid_t exec_loader( LPCWSTR cmd_line, int socketfd,
     RtlFreeHeap( GetProcessHeap(), 0, wineloader );
     RtlFreeHeap( GetProcessHeap(), 0, argv );
     return pid;
+}
+
+static NTSTATUS create_process( HANDLE hFile, LPCWSTR filename,
+                            PSECURITY_DESCRIPTOR psd, PSECURITY_DESCRIPTOR tsd,
+                            BOOL inherit, DWORD flags, PRTL_USER_PROCESS_PARAMETERS startup,
+                            PRTL_USER_PROCESS_INFORMATION info, LPCSTR unixdir,
+                            const struct binary_info *binary_info)
+{
+    static const char *cpu_names[] = { "x86", "x86_64", "PowerPC", "ARM", "ARM64" };
+    NTSTATUS status;
+    NTSTATUS ret;
+    BOOL success = FALSE;
+    HANDLE process_info;
+    WCHAR *env_end;
+    char *winedebug = NULL;
+    startup_info_t *startup_info;
+    DWORD startup_info_size;
+    int socketfd[2], stdin_fd = -1, stdout_fd = -1;
+    pid_t pid;
+    int cpu;
+    
+    if ((cpu = get_process_cpu( filename, binary_info )) == -1)
+    {
+        return STATUS_BAD_INITIAL_PC;
+    }
+    
+    /* create the socket for the new process */
+
+    if (socketpair( AF_UNIX, SOCK_STREAM, 0, socketfd ) == -1)
+    {
+        return STATUS_TOO_MANY_OPENED_FILES;
+    }
+#ifdef SO_PASSCRED
+    else
+    {
+        int enable = 1;
+        setsockopt( socketfd[0], SOL_SOCKET, SO_PASSCRED, &enable, sizeof(enable) );
+    }
+#endif
+
+    RtlAcquirePebLock();
+    
+    if (!(startup_info = create_startup_info( startup, &startup_info_size )))
+    {
+        RtlReleasePebLock();
+        close( socketfd[0] );
+        close( socketfd[1] );
+        return STATUS_NO_MEMORY;
+    }
+    
+    if (!startup->Environment) startup->Environment = NtCurrentTeb()->Peb->ProcessParameters->Environment;
+    
+    env_end = startup->Environment;
+    while (*env_end)
+    {
+        static const WCHAR WINEDEBUG[] = {'W','I','N','E','D','E','B','U','G','=',0};
+        if (!winedebug && !strncmpW( env_end, WINEDEBUG, sizeof(WINEDEBUG)/sizeof(WCHAR) - 1 ))
+        {
+            DWORD len = ntdll_wcstoumbs(0, env_end, strlenW(env_end), NULL, 0, NULL, NULL);
+            if ((winedebug = RtlAllocateHeap( GetProcessHeap(), 0, len )))
+                ntdll_wcstoumbs( 0, env_end, strlenW(env_end), winedebug, len, NULL, NULL );
+        }
+        env_end += strlenW(env_end) + 1;
+    }
+    env_end++;
+    
+    wine_server_send_fd( socketfd[1] );
+    close( socketfd[1] );
+    
+    /* create the process on the server side */
+    SERVER_START_REQ( new_process )
+    {
+        req->inherit_all    = inherit;
+        req->create_flags   = flags;
+        req->socket_fd      = socketfd[1];
+        req->exe_file       = wine_server_obj_handle( hFile );
+        req->process_access = PROCESS_ALL_ACCESS;
+        req->process_attr   = 0;
+        req->thread_access  = THREAD_ALL_ACCESS;
+        req->thread_attr    = 0;
+        req->cpu            = cpu;
+        req->info_size      = startup_info_size;
+
+        wine_server_add_data( req, startup_info, startup_info_size );
+        wine_server_add_data( req, startup->Environment, (env_end - startup->Environment) * sizeof(WCHAR) );
+        if (!(status = wine_server_call( req )))
+        {
+            info->ClientId.UniqueProcess = (HANDLE)(unsigned long)reply->pid; /* HANDLEs are 64 bit but wineserver returns a 64 bit int */
+            info->ClientId.UniqueThread  = (HANDLE)(unsigned long)reply->tid;
+            info->Process    = wine_server_ptr_handle( reply->phandle );
+            info->Thread     = wine_server_ptr_handle( reply->thandle );
+            
+        }
+        process_info = wine_server_ptr_handle( reply->info );
+    }
+    SERVER_END_REQ;
+    
+    RtlReleasePebLock();
+    
+    if (status)
+    {
+        switch (status)
+        {
+        case STATUS_INVALID_IMAGE_WIN_64:
+            ERR( "64-bit application %s not supported in 32-bit prefix\n", debugstr_w(filename) );
+            break;
+        case STATUS_INVALID_IMAGE_FORMAT:
+            ERR( "%s not supported on this installation (%s binary)\n",
+                 debugstr_w(filename), cpu_names[cpu] );
+            break;
+        }
+        close( socketfd[0] );
+        RtlFreeHeap( GetProcessHeap(), 0, startup_info );
+        RtlFreeHeap( GetProcessHeap(), 0, winedebug );
+        return status;
+    }
+    
+    if (!(flags & (CREATE_NEW_CONSOLE | DETACHED_PROCESS)))
+    {
+        if (startup_info->hstdin)
+            wine_server_handle_to_fd( wine_server_ptr_handle(startup_info->hstdin),
+                                      FILE_READ_DATA, &stdin_fd, NULL );
+        if (startup_info->hstdout)
+            wine_server_handle_to_fd( wine_server_ptr_handle(startup_info->hstdout),
+                                      FILE_WRITE_DATA, &stdout_fd, NULL );
+    }
+    RtlFreeHeap( GetProcessHeap(), 0, startup_info );
+    
+    /* create the child process */
+    
+    pid = exec_loader(startup->CommandLine.Buffer, socketfd[0], stdin_fd, stdout_fd, unixdir, winedebug, binary_info );
+    
+    if (stdin_fd != -1) close( stdin_fd );
+    if (stdout_fd != -1) close( stdout_fd );
+    close( socketfd[0] );
+    RtlFreeHeap( GetProcessHeap(), 0, winedebug );
+    if (pid == -1)
+    {
+        ret = STATUS_INTERNAL_ERROR;
+        goto error;
+    }
+    
+    /* wait for the new process info to be ready */
+    
+    NtWaitForSingleObject( process_info, FALSE, NULL );
+    
+    SERVER_START_REQ( get_new_process_info )
+    {
+        req->info = wine_server_obj_handle( process_info );
+        wine_server_call( req );
+        success = reply->success;
+    }
+    SERVER_END_REQ;
+    
+    if(!success)
+    {
+        ret = STATUS_INTERNAL_ERROR;
+        goto error;
+    }
+    
+    info->Length = sizeof(*info);
+    
+    return STATUS_SUCCESS;
+    
+error:
+    NtClose( process_info );
+    NtClose( info->Process );
+    NtClose( info->Thread );
+    info->Process = info->Thread = 0;
+    info->ClientId.UniqueProcess = info->ClientId.UniqueThread = 0;
+    return ret;
 }
 
 /**********************************************************************
