@@ -23,6 +23,7 @@
 
 #include "config.h"
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,10 +39,16 @@
 #include "windef.h"
 #include "winternl.h"
 #include "ntdll_misc.h"
+#include "wine/library.h"
 #include "wine/server.h"
+#include "wine/unicode.h"
 
 #ifdef HAVE_MACH_MACH_H
 #include <mach/mach.h>
+#endif
+#include <sys/types.h>
+#ifdef HAVE_SYS_WAIT_H
+#include <sys/wait.h>
 #endif
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
@@ -1031,6 +1038,344 @@ void get_binary_info( HANDLE hfile, struct binary_info *info )
             }
         }
     }
+}
+
+static startup_info_t *create_startup_info(PRTL_USER_PROCESS_PARAMETERS startup, DWORD *info_size)
+{
+    const RTL_USER_PROCESS_PARAMETERS *cur_params;
+    startup_info_t *info;
+    DWORD size;
+    void *ptr;
+    HANDLE hstdin, hstdout, hstderr;
+    
+    
+    cur_params = NtCurrentTeb()->Peb->ProcessParameters;
+    
+    /* convert ImagePathName and CommandLine to DOS format*/
+    if(startup->ImagePathName.Buffer[5] == ':')
+    {
+        DWORD len = startup->ImagePathName.Length - 4 * sizeof(WCHAR);
+        memmove( startup->ImagePathName.Buffer, startup->ImagePathName.Buffer + 4, len );
+        startup->ImagePathName.Buffer[len / sizeof(WCHAR)] = 0;
+        startup->ImagePathName.Length = len;
+    }
+    
+    if(startup->CommandLine.Buffer[5] == ':')
+    {
+        DWORD len = startup->CommandLine.Length - 4 * sizeof(WCHAR);
+        memmove( startup->CommandLine.Buffer, startup->CommandLine.Buffer + 4, len );
+        startup->CommandLine.Buffer[len / sizeof(WCHAR)] = 0;
+        startup->CommandLine.Length = len;
+    }
+    
+    size = sizeof(*info);
+    size += startup->CurrentDirectory.DosPath.Length;
+    size += startup->DllPath.Length;
+    size += startup->ImagePathName.Length;
+    size += startup->CommandLine.Length;
+    size += startup->WindowTitle.Length;
+    size += startup->Desktop.Length;
+    size += startup->ShellInfo.Length;
+    size += startup->RuntimeInfo.Length;
+    
+    *info_size = size;
+    
+    info = RtlAllocateHeap( GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+    if(!info) FIXME("broke1");
+    
+    info->console_flags = startup->ConsoleFlags;
+    
+    if(startup->dwFlags & STARTF_USESTDHANDLES)
+    {
+        hstdin  = startup->hStdInput;
+        hstdout = startup->hStdOutput;
+        hstderr = startup->hStdError;
+    }else {
+        hstdin  = cur_params->hStdInput;
+        hstdout = cur_params->hStdOutput;
+        hstderr = cur_params->hStdError;
+    }
+    
+    info->hstdin  = wine_server_obj_handle( hstdin );
+    info->hstdout = wine_server_obj_handle( hstdout );
+    info->hstderr = wine_server_obj_handle( hstderr );
+    
+    if (is_console_handle(hstdin))  info->hstdin  = console_handle_unmap(hstdin);
+    if (is_console_handle(hstdout)) info->hstdout = console_handle_unmap(hstdout);
+    if (is_console_handle(hstderr)) info->hstderr = console_handle_unmap(hstderr);
+    
+    info->x         = startup->dwX;
+    info->y         = startup->dwY;
+    info->xsize     = startup->dwXSize;
+    info->ysize     = startup->dwYSize;
+    info->xchars    = startup->dwXCountChars;
+    info->ychars    = startup->dwYCountChars;
+    info->attribute = startup->dwFillAttribute;
+    info->flags     = startup->dwFlags;
+    info->show      = startup->wShowWindow;
+    
+    /* add the strings */
+    ptr = info + 1;
+    
+    info->curdir_len = startup->CurrentDirectory.DosPath.Length;
+    memcpy( ptr, startup->CurrentDirectory.DosPath.Buffer, startup->CurrentDirectory.DosPath.Length );
+    ptr = (char *)ptr + startup->CurrentDirectory.DosPath.Length;
+    
+    info->dllpath_len = startup->DllPath.Length;
+    memcpy( ptr, startup->DllPath.Buffer, startup->DllPath.Length );
+    ptr = (char *)ptr + startup->DllPath.Length;
+    
+    info->imagepath_len = startup->ImagePathName.Length;
+    memcpy( ptr, startup->ImagePathName.Buffer, startup->ImagePathName.Length );
+    ptr = (char *)ptr + startup->ImagePathName.Length;
+    
+    info->cmdline_len = startup->CommandLine.Length;
+    memcpy( ptr, startup->CommandLine.Buffer, startup->CommandLine.Length );
+    ptr = (char *)ptr + startup->CommandLine.Length;
+    
+    
+    info->title_len = startup->WindowTitle.Length;
+    memcpy( ptr, startup->WindowTitle.Buffer, startup->WindowTitle.Length );
+    ptr = (char *)ptr + startup->WindowTitle.Length;
+    
+    
+    info->desktop_len = startup->Desktop.Length;
+    memcpy( ptr, startup->Desktop.Buffer, startup->Desktop.Length );
+    ptr = (char *)ptr + startup->Desktop.Length;
+    
+    info->shellinfo_len = startup->ShellInfo.Length;
+    memcpy( ptr, startup->ShellInfo.Buffer, startup->ShellInfo.Length );
+    ptr = (char *)ptr + startup->ShellInfo.Length;
+    
+    info->runtime_len = startup->RuntimeInfo.Length;
+    memcpy( ptr, startup->RuntimeInfo.Buffer, startup->RuntimeInfo.Length );
+    ptr = (char *)ptr + startup->RuntimeInfo.Length;
+    
+    return info;
+}
+
+static const BOOL is_win64 = (sizeof(void *) > sizeof(int));
+
+/***********************************************************************
+ *           get_alternate_loader
+ *
+ * Get the name of the alternate (32 or 64 bit) Wine loader.
+ */
+static const char *get_alternate_loader( char **ret_env )
+{
+    char *env;
+    const char *loader = NULL;
+    const char *loader_env = getenv( "WINELOADER" );
+
+    *ret_env = NULL;
+
+    if (wine_get_build_dir()) loader = is_win64 ? "loader/wine" : "server/../loader/wine64";
+
+    if (loader_env)
+    {
+        int len = strlen( loader_env );
+        if (!is_win64)
+        {
+            if (!(env = RtlAllocateHeap( GetProcessHeap(), 0, sizeof("WINELOADER=") + len + 2 ))) return NULL;
+            strcpy( env, "WINELOADER=" );
+            strcat( env, loader_env );
+            strcat( env, "64" );
+        }
+        else
+        {
+            if (!(env = RtlAllocateHeap( GetProcessHeap(), 0, sizeof("WINELOADER=") + len ))) return NULL;
+            strcpy( env, "WINELOADER=" );
+            strcat( env, loader_env );
+            len += sizeof("WINELOADER=") - 1;
+            if (!strcmp( env + len - 2, "64" )) env[len - 2] = 0;
+        }
+        if (!loader)
+        {
+            if ((loader = strrchr( env, '/' ))) loader++;
+            else loader = env;
+        }
+        *ret_env = env;
+    }
+    if (!loader) loader = is_win64 ? "wine" : "wine64";
+    return loader;
+}
+
+/***********************************************************************
+ *           build_argv
+ *
+ * Build an argv array from a command-line.
+ * 'reserved' is the number of args to reserve before the first one.
+ */
+static char **build_argv( const WCHAR *cmdlineW, int reserved )
+{
+    int argc;
+    char** argv;
+    char *arg,*s,*d,*cmdline;
+    int in_quotes,bcount,len;
+
+    len = ntdll_wcstoumbs( 0, cmdlineW, strlenW(cmdlineW), NULL, 0, NULL, NULL );
+    if (!(cmdline = RtlAllocateHeap( GetProcessHeap(), 0, len ))) return NULL;
+    ntdll_wcstoumbs( 0, cmdlineW, strlenW(cmdlineW), cmdline, len, NULL, NULL );
+
+    argc=reserved+1;
+    bcount=0;
+    in_quotes=0;
+    s=cmdline;
+    while (1) {
+        if (*s=='\0' || ((*s==' ' || *s=='\t') && !in_quotes)) {
+            /* space */
+            argc++;
+            /* skip the remaining spaces */
+            while (*s==' ' || *s=='\t') {
+                s++;
+            }
+            if (*s=='\0')
+                break;
+            bcount=0;
+            continue;
+        } else if (*s=='\\') {
+            /* '\', count them */
+            bcount++;
+        } else if ((*s=='"') && ((bcount & 1)==0)) {
+            /* unescaped '"' */
+            in_quotes=!in_quotes;
+            bcount=0;
+        } else {
+            /* a regular character */
+            bcount=0;
+        }
+        s++;
+    }
+    if (!(argv = RtlAllocateHeap( GetProcessHeap(), 0, argc*sizeof(*argv) + len )))
+    {
+        RtlFreeHeap( GetProcessHeap(), 0, cmdline );
+        return NULL;
+    }
+
+    arg = d = s = (char *)(argv + argc);
+    memcpy( d, cmdline, len );
+    bcount=0;
+    in_quotes=0;
+    argc=reserved;
+    while (*s) {
+        if ((*s==' ' || *s=='\t') && !in_quotes) {
+            /* Close the argument and copy it */
+            *d=0;
+            argv[argc++]=arg;
+
+            /* skip the remaining spaces */
+            do {
+                s++;
+            } while (*s==' ' || *s=='\t');
+
+            /* Start with a new argument */
+            arg=d=s;
+            bcount=0;
+        } else if (*s=='\\') {
+            /* '\\' */
+            *d++=*s++;
+            bcount++;
+        } else if (*s=='"') {
+            /* '"' */
+            if ((bcount & 1)==0) {
+                /* Preceded by an even number of '\', this is half that
+                 * number of '\', plus a '"' which we discard.
+                 */
+                d-=bcount/2;
+                s++;
+                in_quotes=!in_quotes;
+            } else {
+                /* Preceded by an odd number of '\', this is half that
+                 * number of '\' followed by a '"'
+                 */
+                d=d-bcount/2-1;
+                *d++='"';
+                s++;
+            }
+            bcount=0;
+        } else {
+            /* a regular character */
+            *d++=*s++;
+            bcount=0;
+        }
+    }
+    if (*arg) {
+        *d='\0';
+        argv[argc++]=arg;
+    }
+    argv[argc]=NULL;
+
+    RtlFreeHeap( GetProcessHeap(), 0, cmdline );
+    return argv;
+}
+
+static pid_t exec_loader( LPCWSTR cmd_line, int socketfd,
+                          int stdin_fd, int stdout_fd, const char *unixdir, char *winedebug,
+                          const struct binary_info *binary_info )
+{
+    pid_t pid;
+    char *wineloader = NULL;
+    const char *loader = NULL;
+    char **argv;
+
+    argv = build_argv( cmd_line, 1 );
+
+    if (!is_win64 ^ !(binary_info->flags & BINARY_FLAG_64BIT))
+        loader = get_alternate_loader( &wineloader );
+
+    if (!(pid = fork()))  /* child */
+    {
+        if (!(pid = fork()))  /* grandchild */
+        {
+            char preloader_reserve[64], socket_env[64];
+
+            
+            if (stdin_fd != -1) dup2( stdin_fd, 0 );
+            if (stdout_fd != -1) dup2( stdout_fd, 1 );
+            
+
+            if (stdin_fd != -1) close( stdin_fd );
+            if (stdout_fd != -1) close( stdout_fd );
+
+            /* Reset signals that we previously set to SIG_IGN */
+            signal( SIGPIPE, SIG_DFL );
+
+            sprintf( socket_env, "WINESERVERSOCKET=%u", socketfd );
+            sprintf( preloader_reserve, "WINEPRELOADRESERVE=%x%08x-%x%08x",
+                     (ULONG)(binary_info->res_start >> 32), (ULONG)binary_info->res_start,
+                     (ULONG)(binary_info->res_end >> 32), (ULONG)binary_info->res_end );
+
+            putenv( preloader_reserve );
+            putenv( socket_env );
+            if (winedebug) putenv( winedebug );
+            if (wineloader) putenv( wineloader );
+            if (unixdir) chdir(unixdir);
+
+            if (argv)
+            {
+                do
+                {
+                    wine_exec_wine_binary( loader, argv, getenv("WINELOADER") );
+                }while (0);
+            }
+            _exit(1);
+        }
+
+        _exit(pid == -1);
+    }
+
+    if (pid != -1)
+    {
+        /* reap child */
+        pid_t wret;
+        do {
+            wret = waitpid(pid, NULL, 0);
+        } while (wret < 0 && errno == EINTR);
+    }
+
+    RtlFreeHeap( GetProcessHeap(), 0, wineloader );
+    RtlFreeHeap( GetProcessHeap(), 0, argv );
+    return pid;
 }
 
 /**********************************************************************

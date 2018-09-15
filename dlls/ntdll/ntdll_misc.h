@@ -251,4 +251,15 @@ extern HANDLE keyed_event DECLSPEC_HIDDEN;
 
 NTSTATUS WINAPI RtlHashUnicodeString(PCUNICODE_STRING,BOOLEAN,ULONG,ULONG*);
 
+
+static inline BOOL is_console_handle(HANDLE h)
+{
+    return h != INVALID_HANDLE_VALUE && ((UINT_PTR)h & 3) == 3;
+}
+
+static inline obj_handle_t console_handle_unmap(HANDLE h)
+{
+    return wine_server_obj_handle( h != INVALID_HANDLE_VALUE ? (HANDLE)((UINT_PTR)h ^ 3) : INVALID_HANDLE_VALUE );
+}
+
 #endif
