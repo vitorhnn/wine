@@ -1043,6 +1043,31 @@ void get_binary_info( HANDLE hfile, struct binary_info *info )
     }
 }
 
+static HANDLE open_exe_file( const WCHAR *name, struct binary_info *binary_info, NTSTATUS* ret )
+{
+    HANDLE handle;
+    OBJECT_ATTRIBUTES attr;
+    IO_STATUS_BLOCK io;
+    UNICODE_STRING nameW;
+
+    TRACE("looking for %s\n", debugstr_w(name) );
+
+    attr.Length = sizeof(attr);
+    attr.RootDirectory = 0;
+    attr.Attributes = OBJ_CASE_INSENSITIVE;
+    RtlDosPathNameToNtPathName_U(name, &nameW, NULL, NULL);
+    attr.ObjectName = &nameW;
+    attr.SecurityDescriptor = NULL;
+    attr.SecurityQualityOfService = NULL;
+
+    *ret = NtCreateFile(&handle, GENERIC_READ, &attr, &io, NULL, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ|FILE_SHARE_DELETE, FILE_OPEN, 0, 0, 0);
+
+    if (handle != INVALID_HANDLE_VALUE)
+        get_binary_info( handle, binary_info ); /* Move this function to ntdll */;
+    
+    return handle;
+}
+
 static int get_process_cpu( const WCHAR *filename, const struct binary_info *binary_info )
 {
     switch (binary_info->arch)
@@ -1576,9 +1601,78 @@ NTSTATUS WINAPI RtlCreateUserProcess(UNICODE_STRING *path, ULONG attributes, RTL
                                      HANDLE parent, BOOLEAN inherit, HANDLE debug, HANDLE exception,
                                      RTL_USER_PROCESS_INFORMATION *info)
 {
-    FIXME("(%p %u %p %p %p %p %d %p %p %p): stub\n", path, attributes, parameters, process_descriptor, thread_descriptor,
-                                     parent, inherit, debug, exception, info);
-    return STATUS_NOT_IMPLEMENTED;
+    
+    NTSTATUS ret;
+    HANDLE hFile;
+    UNICODE_STRING dos_exe_path;
+    char *unixdir = NULL;
+    struct binary_info binary_info;
+    
+    parameters = RtlNormalizeProcessParams(parameters);
+    
+    /* convert nt name to dos name by removing ?? */
+    dos_exe_path.MaximumLength = path->MaximumLength;
+    dos_exe_path.Buffer = RtlAllocateHeap(GetProcessHeap(), 0, path->MaximumLength);
+    RtlCopyUnicodeString(&dos_exe_path, path);
+    if(dos_exe_path.Buffer[5] == ':')
+    {
+        DWORD len = dos_exe_path.Length - 4 * sizeof(WCHAR);
+        memmove( dos_exe_path.Buffer, dos_exe_path.Buffer + 4, len );
+        dos_exe_path.Buffer[len / sizeof(WCHAR)] = 0;
+        dos_exe_path.Length = len;
+    }
+    
+    /* get file handle from path, else return failure */
+    hFile = open_exe_file(dos_exe_path.Buffer, &binary_info, &ret);
+    if(hFile == INVALID_HANDLE_VALUE)
+    {
+        goto done;
+    }
+
+    /* get unix directory, current directory if not specified in parameters*/
+    if(parameters->CurrentDirectory.DosPath.Length)
+    {
+        UNICODE_STRING nt_name;
+        ANSI_STRING    unix_name;
+        
+        if(!RtlDosPathNameToNtPathName_U(parameters->CurrentDirectory.DosPath.Buffer, &nt_name, NULL, NULL)){ret = STATUS_BAD_CURRENT_DIRECTORY; goto done;}
+        ret = wine_nt_to_unix_file_name(&nt_name, &unix_name, FILE_OPEN_IF, FALSE);
+        unixdir = unix_name.Buffer;
+        
+        if (ret)
+        {
+            ret = STATUS_BAD_CURRENT_DIRECTORY;
+            goto done;
+        }
+    }else{
+        UNICODE_STRING nt_name;
+        ANSI_STRING    unix_name;
+        
+        WCHAR buf[MAX_PATH];
+        if (RtlGetCurrentDirectory_U(MAX_PATH * sizeof(WCHAR), buf))
+        {
+            RtlDosPathNameToNtPathName_U(buf, &nt_name, NULL, NULL);
+            wine_nt_to_unix_file_name( &nt_name, &unix_name, FILE_OPEN_IF, FALSE );
+            unixdir = unix_name.Buffer;
+        }
+    }
+
+    info->Process = info->Thread = 0;
+    info->ClientId.UniqueProcess = info->ClientId.UniqueThread = 0;
+    /* TODO: Length and SectionImageInformation */
+    
+    /* Now we finally start what is called create_process in kernel32 */
+    if(binary_info.type == BINARY_PE)
+    {
+        ret = create_process(hFile, parameters->ImagePathName.Buffer, process_descriptor, thread_descriptor, inherit, 0x00000004, parameters, info, unixdir, &binary_info);
+    }else{
+        return 1;
+    }
+    
+    if (hFile) NtClose( hFile );
+
+    done:
+    return ret;
 }
 
 
