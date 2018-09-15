@@ -886,6 +886,7 @@
 @ stub PsGetProcessSessionId
 @ stub PsGetProcessWin32Process
 @ stub PsGetProcessWin32WindowStation
+@ stdcall PsGetProcessWow64Process(ptr)
 @ stub PsGetThreadFreezeCount
 @ stub PsGetThreadHardErrorsAreDisabled
 @ stub PsGetThreadId

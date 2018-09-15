@@ -3936,6 +3936,16 @@ HANDLE WINAPI PsGetProcessId(PEPROCESS process)
 }
 
 /*********************************************************************
+ *           PsGetProcessWow64Process    (NTOSKRNL.@)
+ */
+PVOID PsGetProcessWow64Process(PEPROCESS process)
+{
+    FIXME("stub: %p\n", process);
+    
+    return 0;
+}
+
+/*********************************************************************
  *           FsRtlRegisterFileSystemFilterCallbacks    (NTOSKRNL.@)
  */
 NTSTATUS WINAPI FsRtlRegisterFileSystemFilterCallbacks( DRIVER_OBJECT *object, PFS_FILTER_CALLBACKS callbacks)
