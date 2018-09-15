@@ -1933,7 +1933,7 @@ PVOID WINAPI ExAllocatePoolWithQuota( POOL_TYPE type, SIZE_T size )
 PVOID WINAPI ExAllocatePoolWithTag( POOL_TYPE type, SIZE_T size, ULONG tag )
 {
     /* FIXME: handle page alignment constraints */
-    void *ret = HeapAlloc( GetProcessHeap(), 0, size );
+    void *ret = VirtualAlloc( NULL, size, (MEM_RESERVE | MEM_COMMIT), PAGE_EXECUTE_READWRITE );
     TRACE( "%lu pool %u -> %p\n", size, type, ret );
     return ret;
 }
@@ -1993,7 +1993,7 @@ void WINAPI ExFreePool( void *ptr )
 void WINAPI ExFreePoolWithTag( void *ptr, ULONG tag )
 {
     TRACE( "%p\n", ptr );
-    HeapFree( GetProcessHeap(), 0, ptr );
+    VirtualFree( ptr, 0, MEM_RELEASE );
 }
 
 
