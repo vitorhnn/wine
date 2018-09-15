@@ -2080,7 +2080,14 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
  */
 void WINAPI KeInitializeEvent( PRKEVENT Event, EVENT_TYPE Type, BOOLEAN State )
 {
-    FIXME( "stub: %p %d %d\n", Event, Type, State );
+    TRACE( " %p %d %d\n", Event, Type, State );
+    
+    /* Initialize the Dispatcher Header */
+    Event->Header.Type = Type;
+    
+    Event->Header.Size = sizeof(KEVENT) / sizeof(ULONG);
+    Event->Header.SignalState = State;
+    InitializeListHead(&(Event->Header.WaitListHead));
 }
 
 
