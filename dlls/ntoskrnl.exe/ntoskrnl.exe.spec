@@ -906,7 +906,7 @@
 @ stdcall PsLookupProcessByProcessId(ptr ptr)
 @ stub PsLookupProcessThreadByCid
 @ stub PsLookupThreadByThreadId
-@ stub PsProcessType
+@ extern PsProcessType
 @ stub PsReferenceImpersonationToken
 @ stub PsReferencePrimaryToken
 @ stdcall PsReleaseProcessExitSynchronization(ptr)
@@ -933,7 +933,7 @@
 @ stub PsSetThreadHardErrorsAreDisabled
 @ stub PsSetThreadWin32Thread
 @ stdcall PsTerminateSystemThread(long)
-@ stub PsThreadType
+@ extern PsThreadType
 @ stdcall READ_REGISTER_BUFFER_UCHAR(ptr ptr long)
 @ stub READ_REGISTER_BUFFER_ULONG
 @ stub READ_REGISTER_BUFFER_USHORT

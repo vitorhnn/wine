@@ -9,3 +9,8 @@ typedef struct _KTHREAD
     /* wine specific data*/
     HANDLE wakeup_event;
 };
+
+typedef struct _OBJECT_TYPE
+{
+    UNICODE_STRING Name;
+};

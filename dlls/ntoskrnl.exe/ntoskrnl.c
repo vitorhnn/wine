@@ -74,6 +74,12 @@ typedef struct _KSERVICE_TABLE_DESCRIPTOR
 
 KSERVICE_TABLE_DESCRIPTOR KeServiceDescriptorTable[4] = { { 0 } };
 
+POBJECT_TYPE PsThreadType;
+POBJECT_TYPE PsProcessType;
+
+static const WCHAR ThreadTypeW[] =  {'T','h','r','e','a','d',0};
+static const WCHAR ProcessTypeW[] = {'P','r','o','c','e','s','s',0};
+
 typedef void (WINAPI *PCREATE_PROCESS_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
 typedef void (WINAPI *PCREATE_PROCESS_NOTIFY_ROUTINE_EX)(PEPROCESS,HANDLE,PPS_CREATE_NOTIFY_INFO);
 typedef void (WINAPI *PCREATE_THREAD_NOTIFY_ROUTINE)(HANDLE,HANDLE,BOOLEAN);
@@ -647,6 +653,18 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
     ULONG in_size = 4096, out_size = 0;
     void *in_buff = NULL;
     HANDLE handles[2];
+
+    UNICODE_STRING ThreadTypeUS;
+    UNICODE_STRING ProcessTypeUS;
+
+    RtlCreateUnicodeString(&ThreadTypeUS, ThreadTypeW);
+    RtlCreateUnicodeString(&ProcessTypeUS, ProcessTypeW);
+
+    PsThreadType  = RtlAllocateHeap( GetProcessHeap(), 0, sizeof(struct _OBJECT_TYPE) );
+    PsProcessType = RtlAllocateHeap( GetProcessHeap(), 0, sizeof(struct _OBJECT_TYPE) );
+    
+    PsThreadType->Name = ThreadTypeUS;
+    PsProcessType->Name = ProcessTypeUS;
 
     request_thread = GetCurrentThreadId();
 
@@ -2508,7 +2526,7 @@ NTSTATUS WINAPI ObReferenceObjectByHandle( HANDLE obj, ACCESS_MASK access,
                                            KPROCESSOR_MODE mode, PVOID* ptr,
                                            POBJECT_HANDLE_INFORMATION info)
 {
-    FIXME( "stub: %p %x %p %d %p %p\n", obj, access, type, mode, ptr, info);
+    FIXME( "stub: %p %x %p %d %p %p object type: %s\n", obj, access, type, mode, ptr, info, (type ? debugstr_us(&type->Name) : "") );
 
     if(ptr)
         *ptr = UlongToHandle(0xdeadbeaf);
