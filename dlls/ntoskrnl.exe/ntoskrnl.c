@@ -2086,13 +2086,36 @@ PEPROCESS WINAPI IoGetCurrentProcess(void)
     return NULL;
 }
 
+static void init_current_kthread(void)
+{
+    struct _KTHREAD *kthread = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x0360);
+
+    kthread->header.Type = 6;
+    kthread->header.Size = 0x0360;
+    kthread->header.SignalState = 1;
+    
+    for(unsigned int i = 0; i < 4; i++)
+        kthread->WaitBlock[i].Thread = kthread;
+
+    InitializeListHead(&kthread->MutantListHead);
+
+    kthread->wakeup_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+
+    NtCurrentTeb()->Spare4 = kthread;
+}
+
 /***********************************************************************
  *           KeGetCurrentThread / PsGetCurrentThread   (NTOSKRNL.EXE.@)
+ *     -zf's idea
  */
 PRKTHREAD WINAPI KeGetCurrentThread(void)
 {
-    FIXME("() stub\n");
-    return NULL;
+    TRACE("() returning KTHREAD structure from TEB\n");
+
+    if (!NtCurrentTeb()->Spare4)
+        init_current_kthread();
+
+    return NtCurrentTeb()->Spare4;
 }
 
 /***********************************************************************
