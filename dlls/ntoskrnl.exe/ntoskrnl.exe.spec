@@ -668,6 +668,7 @@
 @ stub MmBuildMdlForNonPagedPool
 @ stub MmCanFileBeTruncated
 @ stub MmCommitSessionMappedView
+@ stdcall MmCopyVirtualMemory(ptr ptr ptr ptr long long ptr)
 @ stub MmCreateMdl
 @ stub MmCreateSection
 @ stub MmDisableModifiedWriteOfSection
@@ -913,6 +914,7 @@
 @ stdcall PsRemoveCreateThreadNotifyRoutine(ptr)
 @ stdcall PsRemoveLoadImageNotifyRoutine(ptr)
 @ stub PsRestoreImpersonation
+@ stdcall PsResumeProcess(ptr)
 @ stub PsReturnPoolQuota
 @ stub PsReturnProcessNonPagedPoolQuota
 @ stub PsReturnProcessPagedPoolQuota
@@ -932,6 +934,7 @@
 @ stub PsSetProcessWindowStation
 @ stub PsSetThreadHardErrorsAreDisabled
 @ stub PsSetThreadWin32Thread
+@ stdcall PsSuspendProcess(ptr)
 @ stdcall PsTerminateSystemThread(long)
 @ extern PsThreadType
 @ stdcall READ_REGISTER_BUFFER_UCHAR(ptr ptr long)

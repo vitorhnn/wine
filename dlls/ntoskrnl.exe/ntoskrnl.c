@@ -2760,6 +2760,14 @@ NTSTATUS WINAPI PsImpersonateClient(PETHREAD Thread, PACCESS_TOKEN Token, BOOLEA
 }
 
 
+NTSTATUS WINAPI PsResumeProcess(PEPROCESS Process)
+{
+    FIXME("stub: %p\n", Process);
+
+    return STATUS_SUCCESS;
+}
+
+
 /***********************************************************************
  *           PsSetCreateProcessNotifyRoutine   (NTOSKRNL.EXE.@)
  */
@@ -2810,6 +2818,14 @@ NTSTATUS WINAPI PsRemoveCreateThreadNotifyRoutine( PCREATE_THREAD_NOTIFY_ROUTINE
  }
 
 
+NTSTATUS WINAPI PsSuspendProcess(PEPROCESS Process)
+{
+    FIXME("stub: %p\n", Process);
+
+    return STATUS_SUCCESS;
+}
+
+
 /***********************************************************************
  *           PsTerminateSystemThread   (NTOSKRNL.EXE.@)
  */
@@ -2817,6 +2833,15 @@ NTSTATUS WINAPI PsTerminateSystemThread(NTSTATUS ExitStatus)
 {
     FIXME( "stub: %u\n", ExitStatus );
     return STATUS_NOT_IMPLEMENTED;
+}
+
+
+NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS ProcessIn, PVOID AddressIn, PEPROCESS ProcessOut,
+                                    PVOID AddressOut, SIZE_T Size, KPROCESSOR_MODE Mode, PSIZE_T SizeOut)
+{
+    FIXME("stub %p %p %p %p %lu %u %p\n", ProcessIn, AddressIn, ProcessOut, AddressOut, Size, Mode, SizeOut);
+
+    return STATUS_SUCCESS;
 }
 
 
