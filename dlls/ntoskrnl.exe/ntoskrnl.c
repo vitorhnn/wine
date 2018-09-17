@@ -2831,8 +2831,9 @@ NTSTATUS WINAPI PsSuspendProcess(PEPROCESS Process)
  */
 NTSTATUS WINAPI PsTerminateSystemThread(NTSTATUS ExitStatus)
 {
-    FIXME( "stub: %u\n", ExitStatus );
-    return STATUS_NOT_IMPLEMENTED;
+    TRACE("ExitStatus: %u\n", ExitStatus);
+    RtlExitUserThread(ExitStatus);
+    return STATUS_SUCCESS; /* unnecessary */
 }
 
 
