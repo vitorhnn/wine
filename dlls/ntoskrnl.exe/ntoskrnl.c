@@ -2120,10 +2120,11 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
 
 /***********************************************************************
  *           KeInitializeEvent   (NTOSKRNL.EXE.@)
+ *    - from ReactOS
  */
 void WINAPI KeInitializeEvent( PRKEVENT Event, EVENT_TYPE Type, BOOLEAN State )
 {
-    TRACE( " %p %d %d\n", Event, Type, State );
+    TRACE( "event: %p, type: %d, state: %d\n", Event, Type, State );
     
     /* Initialize the Dispatcher Header */
     Event->Header.Type = Type;
@@ -2136,10 +2137,20 @@ void WINAPI KeInitializeEvent( PRKEVENT Event, EVENT_TYPE Type, BOOLEAN State )
 
  /***********************************************************************
  *           KeInitializeMutex   (NTOSKRNL.EXE.@)
+ *   -from ReactOS
  */
 void WINAPI KeInitializeMutex(PRKMUTEX Mutex, ULONG Level)
 {
-    FIXME( "stub: %p, %u\n", Mutex, Level );
+    TRACE( "mutex: %p, leve: %u\n", Mutex, Level );
+    
+    Mutex->Header.Type = MutantObject;
+    Mutex->Header.Size = sizeof(KMUTEX);
+    Mutex->Header.SignalState = 1;
+    InitializeListHead(&(Mutex->Header.WaitListHead));
+    
+    Mutex->OwnerThread = NULL;
+    Mutex->Abandoned = FALSE;
+    Mutex->ApcDisable = 1;
 }
 
 
