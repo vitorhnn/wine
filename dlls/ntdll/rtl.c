@@ -752,6 +752,12 @@ ULONG WINAPI RtlRandom (PULONG seed)
 }
 
 
+ULONG WINAPI RtlRandomEx(PULONG seed)
+{
+    return RtlRandom(seed);
+}
+
+
 /*************************************************************************
  * RtlAreAllAccessesGranted   [NTDLL.@]
  *
