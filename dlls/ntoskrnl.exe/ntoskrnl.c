@@ -2141,7 +2141,7 @@ void WINAPI KeInitializeEvent( PRKEVENT Event, EVENT_TYPE Type, BOOLEAN State )
  */
 void WINAPI KeInitializeMutex(PRKMUTEX Mutex, ULONG Level)
 {
-    TRACE( "mutex: %p, leve: %u\n", Mutex, Level );
+    TRACE( "mutex: %p, level: %u\n", Mutex, Level );
     
     Mutex->Header.Type = MutantObject;
     Mutex->Header.Size = sizeof(KMUTEX);
