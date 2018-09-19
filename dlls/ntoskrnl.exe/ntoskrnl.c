@@ -2466,10 +2466,11 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
 
         /* First check to make sure we need to wait */
         if(generic_object->Header.Type == MutantObject)
-        {TRACE("Waiting for Mutex\n");
+        {
             /* Mutex waits are different, as you can recursively obtain the mutex, so we must also check for ownership */
             if(mutex_object->Header.SignalState > 0 || mutex_object->OwnerThread == current_thread)
-            {TRACE("Waiting not owned or owned by us\n");
+            {
+                TRACE("Acquiring mutex\n");
                 /* Make sure that we haven't reached the acquirement limit */
                 if(mutex_object->Header.SignalState == (LONG)MINLONG)
                 {
@@ -2499,7 +2500,8 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
                     return ret;
                 }
             }
-        }else if(generic_object->Header.SignalState > 0){ TRACE("Not a mutex, and we don't need to wait\n");
+        }else if(generic_object->Header.SignalState > 0){
+            TRACE("Waiting for non-mutex\n");
             /* not a mutex, so we just return without doing anything special since the dispatcher object is signaled */
             /* TODO: support auto-reset events, which get reset here*/
             return ret;
