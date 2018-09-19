@@ -2167,11 +2167,53 @@ NTSTATUS WINAPI KeWaitForMutexObject(PRKMUTEX Mutex, KWAIT_REASON WaitReason, KP
 
  /***********************************************************************
  *           KeReleaseMutex   (NTOSKRNL.EXE.@)
+ * 
+ *     -This implementation was made using the reactOS version, with dispatcher objects emulated via K32 Events
+ * 
  */
 LONG WINAPI KeReleaseMutex(PRKMUTEX Mutex, BOOLEAN Wait)
 {
-    FIXME( "stub: %p, %d\n", Mutex, Wait );
-    return STATUS_NOT_IMPLEMENTED;
+    PKTHREAD current_thread;
+    PKMUTEX  mutex;
+    LONG     previous_state;
+
+    current_thread = KeGetCurrentThread();
+    mutex          = (PKMUTEX) Mutex; /* Unrestricted pointer */
+    previous_state = mutex->Header.SignalState;
+
+    /* Ensure we own the mutex */
+    if(mutex->OwnerThread != current_thread)
+        return previous_state;
+
+    mutex->Header.SignalState++;
+
+    /* Are we actually releasing the mutex to the next thread? */
+    if(mutex->Header.SignalState == 1)
+    {
+        /* Remove this Mutex from the current thread's list of owned mutexes */
+        RemoveEntryList(&mutex->MutantListEntry);
+
+        /* Are people waiting for this mutex?*/
+        if(!IsListEmpty(&mutex->Header.WaitListHead))
+        {
+            PKWAIT_BLOCK wait_block;
+            PLIST_ENTRY wait_block_entry;
+            HANDLE wakeup_event;
+
+            /* Wake up the first waiting thread */
+
+            wait_block_entry = RemoveHeadList(&mutex->Header.WaitListHead);
+
+            wait_block = CONTAINING_RECORD(wait_block_entry, KWAIT_BLOCK, WaitListEntry);
+
+            wakeup_event = wait_block->Thread->wakeup_event;
+
+            SetEvent(wakeup_event);         
+            
+        }
+    }
+
+    return previous_state;
 }
 
 
@@ -2309,11 +2351,53 @@ LONG WINAPI KeResetEvent( PRKEVENT Event )
 
 /***********************************************************************
  *           KeSetEvent   (NTOSKRNL.EXE.@)
+ * 
+ *     -This implementation was made using the reactOS version, with dispatcher objects emulated via K32 Events
+ * 
  */
 LONG WINAPI KeSetEvent( PRKEVENT Event, KPRIORITY Increment, BOOLEAN Wait )
 {
-    FIXME("(%p, %d, %d): stub\n", Event, Increment, Wait);
-    return 0;
+    PKEVENT event;
+    LONG previous_state;
+
+    event = (PKEVENT) Event; /* unrestricted pointer */
+
+    if(Wait){
+        FIXME("Unhandled Paramater: Wait\n");
+    }
+
+    previous_state = event->Header.SignalState;
+    event->Header.SignalState = 1;
+
+    if(event->Header.Type == EventSynchronizationObject)
+    {
+        FIXME("Unhandled Object Type: EventSynchronizationObject, partial-stub\n");
+        return previous_state;
+    }
+    
+    if(!previous_state && !(IsListEmpty(&Event->Header.WaitListHead)) )
+    {
+        PLIST_ENTRY   wait_block_entry;
+        PKWAIT_BLOCK wait_block;
+        HANDLE wakeup_event;
+
+        while(!IsListEmpty(&Event->Header.WaitListHead))
+        {
+            /* depending on sync or notification, unlock all or one */
+            wait_block_entry = RemoveHeadList(&event->Header.WaitListHead);
+
+            wait_block = CONTAINING_RECORD(wait_block_entry, KWAIT_BLOCK, WaitListEntry);
+
+            wakeup_event = wait_block->Thread->wakeup_event;
+
+            SetEvent(wakeup_event);
+
+            if(event->Header.Type == EventSynchronizationObject) /* dead code right now */
+                break;
+        }
+    }
+
+    return previous_state;
 }
 
 
@@ -2336,6 +2420,9 @@ VOID WINAPI KeSetSystemAffinityThread(KAFFINITY Affinity)
 
 /***********************************************************************
  *           KeWaitForSingleObject   (NTOSKRNL.EXE.@)
+ *
+ *     -This implementation was made using the reactOS version, with dispatcher objects emulated via K32 Events
+ *
  */
 NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
                                       KWAIT_REASON WaitReason,
@@ -2343,8 +2430,108 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
                                       BOOLEAN Alertable,
                                       PLARGE_INTEGER Timeout)
 {
-    FIXME( "stub: %p, %d, %d, %d, %p\n", Object, WaitReason, WaitMode, Alertable, Timeout );
-    return STATUS_NOT_IMPLEMENTED;
+
+    PKMUTEX generic_object;
+    PKMUTEX mutex_object;
+    PKTHREAD current_thread;
+    PKWAIT_BLOCK our_primary_wait_block;
+    NTSTATUS ret;
+
+    generic_object = (PKMUTEX) Object;
+    mutex_object = (PKMUTEX) Object;
+    current_thread = KeGetCurrentThread();
+    ret = STATUS_SUCCESS;
+
+    if(!MmIsAddressValid(Object)){
+        FIXME("Invalid Object Pointer");
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if(generic_object->Header.Type != MutantObject && generic_object->Header.Type != EventNotificationObject)
+    {
+        FIXME("Unhandled Object Type: %u\n", generic_object->Header.Type);
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if(WaitMode == UserMode)      FIXME("Unhandled Parameter: WaitMode = UserMode\n");
+    if(WaitReason == UserRequest) FIXME("Unhandled Paraneter: WaitReason = UserRequest\n");
+    if(Alertable)                 FIXME("Unhandled Paramater: Alertable = TRUE");
+
+    if(Timeout) TRACE("Timeout: %ld\n", Timeout->QuadPart);
+
+    /* Wait loop, this will loop everytime the thread's dispatcher object (event) is woken up */
+    for(;;)
+    {
+        /* Put APC wakeup detection here */
+
+        /* First check to make sure we need to wait */
+        if(generic_object->Header.Type == MutantObject)
+        {TRACE("Waiting for Mutex\n");
+            /* Mutex waits are different, as you can recursively obtain the mutex, so we must also check for ownership */
+            if(mutex_object->Header.SignalState > 0 || mutex_object->OwnerThread == current_thread)
+            {TRACE("Waiting not owned or owned by us\n");
+                /* Make sure that we haven't reached the acquirement limit */
+                if(mutex_object->Header.SignalState == (LONG)MINLONG)
+                {
+                    TRACE("Recursive Mutex Acquirment max\n");
+                    return STATUS_MUTANT_LIMIT_EXCEEDED;
+                }
+
+                /* At this point we aren't waiting, we are acquiring the mutex, recursively or not*/
+                mutex_object->Header.SignalState--;
+
+                /* Did we just now acquire it? */
+                if(!mutex_object->Header.SignalState)
+                {
+                    mutex_object->OwnerThread = current_thread;
+                    /* TODO: disable APCs here if necessary, reactOS does */
+                    if(mutex_object->Abandoned)
+                    {
+                        /* Not sure what this does yet */
+                        WARN("abandoned\n");
+                        mutex_object->Abandoned = FALSE;
+                        ret = STATUS_ABANDONED;
+                    }
+
+                    /* Thread has a list of acquired mutants, add to the tail of the list for accuracy purposes */
+                    InsertTailList(&current_thread->MutantListHead, &mutex_object->MutantListEntry);
+
+                    return ret;
+                }
+            }
+        }else if(generic_object->Header.SignalState > 0){ TRACE("Not a mutex, and we don't need to wait\n");
+            /* not a mutex, so we just return without doing anything special since the dispatcher object is signaled */
+            /* TODO: support auto-reset events, which get reset here*/
+            return ret;
+        }
+
+        /* Start the wait */
+    
+        /* set up and add the thread's primary wait block to the wait list*/
+        our_primary_wait_block = &current_thread->WaitBlock[0];
+
+        /* probably not necessary, but we are doing it just in case it will ever be used */
+        our_primary_wait_block->WaitType = WaitAny;
+        our_primary_wait_block->Object   = generic_object;
+
+        /* Add our thread to the object's list of waiters */
+        InsertTailList(&generic_object->Header.WaitListHead, &our_primary_wait_block->WaitListEntry);
+
+        /* Modify "IRQL level" here if necessary for functions such as KeGetApcsDisabled.  Only applies when we support Alertable */
+        
+        TRACE("Waiting for our wakeup event\n");
+        ret = NtWaitForSingleObject(current_thread->wakeup_event, FALSE, Timeout);
+        
+        our_primary_wait_block->Object   = NULL;
+        
+        if(ret == STATUS_TIMEOUT) {
+            TRACE("returning from timeout\n");
+            RemoveEntryList(&our_primary_wait_block->WaitListEntry);
+            return ret;
+        }
+    }
+
+    return ret;
 }
 
 /***********************************************************************
