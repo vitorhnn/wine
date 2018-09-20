@@ -1,28 +1,23 @@
 #include "ddk/wdm.h"
 
-typedef struct _KTHREAD
+struct _KTHREAD
 {
     DISPATCHER_HEADER header; /* This is here for compatibility reasons */
     KWAIT_BLOCK WaitBlock[4];
-    PKPROCESS Process;
+    PEPROCESS Process;
     LIST_ENTRY MutantListHead;
 
     /* wine specific data*/
     HANDLE wakeup_event;
 };
 
-typedef struct _KPROCESS
+struct _EPROCESS
 {
-    DISPATCHER_HEADER header;
+    DISPATCHER_HEADER header; /* This is here for compatibility reasons */
+    DWORD Pid;
 };
 
-typedef struct _EPROCESS
-{
-    struct _KPROCESS Pcb;
-    unsigned int Pid;
-};
-
-typedef struct _OBJECT_TYPE
+struct _OBJECT_TYPE
 {
     UNICODE_STRING Name;
 };

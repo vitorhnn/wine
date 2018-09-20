@@ -48,6 +48,7 @@
 #include "wine/server.h"
 #include "wine/debug.h"
 #include "wine/heap.h"
+#include "wine/list.h"
 #include "wine/rbtree.h"
 #include "wine/svcctl.h"
 
@@ -120,6 +121,15 @@ static int wine_drivers_rb_compare( const void *key, const struct wine_rb_entry 
 }
 
 static struct wine_rb_tree wine_drivers = { wine_drivers_rb_compare };
+
+/* list of process objects and their associated PIDs */
+struct process_object_container
+{
+    struct    list entry;
+    PEPROCESS object;
+};
+
+static struct list process_objects = LIST_INIT( process_objects );
 
 static CRITICAL_SECTION drivers_cs;
 static CRITICAL_SECTION_DEBUG critsect_debug =
@@ -2086,12 +2096,40 @@ PEPROCESS WINAPI IoGetCurrentProcess(void)
     return NULL;
 }
 
+static PEPROCESS get_or_create_process_object(DWORD pid)
+{
+    PEPROCESS new_object;
+    struct process_object_container *container;
+    
+    /* see if we already have the object */
+    LIST_FOR_EACH_ENTRY( container, &process_objects, struct process_object_container, entry )
+    {
+        if(container->object->Pid == pid)
+            return container->object;
+    }
+    
+    /* not found, create object */
+    new_object = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x04D0);
+    new_object->header.Type = ProcessObject;
+    new_object->header.Size = 0x18;
+    new_object->header.SignalState = 1;
+    
+    new_object->Pid = pid;
+    
+    /* create container */
+    container = RtlAllocateHeap(GetProcessHeap, 0, sizeof(*container));
+    container->object = new_object;
+    
+    list_add_head( &process_objects, &container->entry );
+    
+}
+
 static void init_current_kthread(void)
 {
     struct _KTHREAD *kthread = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x0360);
 
-    kthread->header.Type = 6;
-    kthread->header.Size = 0x0360;
+    kthread->header.Type = ThreadObject;
+    kthread->header.Size = 0x18;
     kthread->header.SignalState = 1;
     
     for(unsigned int i = 0; i < 4; i++)
