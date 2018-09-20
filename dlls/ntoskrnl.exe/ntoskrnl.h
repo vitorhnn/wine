@@ -10,6 +10,17 @@ typedef struct _KTHREAD
     HANDLE wakeup_event;
 };
 
+typedef struct _KPROCESS
+{
+    DISPATCHER_HEADER header;
+};
+
+typedef struct _EPROCESS
+{
+    struct _KPROCESS Pcb;
+    unsigned int Pid;
+};
+
 typedef struct _OBJECT_TYPE
 {
     UNICODE_STRING Name;
