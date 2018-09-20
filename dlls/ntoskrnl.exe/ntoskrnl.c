@@ -2087,15 +2087,6 @@ NTSTATUS WINAPI FsRtlRegisterUncProvider(PHANDLE MupHandle, PUNICODE_STRING Redi
     return STATUS_NOT_IMPLEMENTED;
 }
 
-/***********************************************************************
- *           IoGetCurrentProcess / PsGetCurrentProcess   (NTOSKRNL.EXE.@)
- */
-PEPROCESS WINAPI IoGetCurrentProcess(void)
-{
-    FIXME("() stub\n");
-    return NULL;
-}
-
 static PEPROCESS get_or_create_process_object(DWORD pid)
 {
     PEPROCESS new_object;
@@ -2122,6 +2113,22 @@ static PEPROCESS get_or_create_process_object(DWORD pid)
     
     list_add_head( &process_objects, &container->entry );
     
+    return new_object;
+}
+
+/***********************************************************************
+ *           IoGetCurrentProcess / PsGetCurrentProcess   (NTOSKRNL.EXE.@)
+ */
+PEPROCESS WINAPI IoGetCurrentProcess(void)
+{
+    if(GetCurrentThreadId() == request_thread)
+    {
+        TRACE("returning process of interupt dispatcher\n");
+        return get_or_create_process_object(client_pid);
+    }else{
+        FIXME("() stub\n");
+        return NULL;
+    }
 }
 
 static void init_current_kthread(void)
