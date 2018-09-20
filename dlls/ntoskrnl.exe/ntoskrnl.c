@@ -2108,7 +2108,7 @@ static PEPROCESS get_or_create_process_object(DWORD pid)
     new_object->Pid = pid;
     
     /* create container */
-    container = RtlAllocateHeap(GetProcessHeap, 0, sizeof(*container));
+    container = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(*container));
     container->object = new_object;
     
     list_add_head( &process_objects, &container->entry );
