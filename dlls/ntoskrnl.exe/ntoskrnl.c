@@ -4256,6 +4256,24 @@ HANDLE WINAPI PsGetProcessId(PEPROCESS process)
     return 0;
 }
 
+/********************************************************************* 
+ *           PsGetProcessPeb    (NTOSKRNL.@)
+ */
+PPEB WINAPI PsGetProcessPeb(PEPROCESS process)
+{
+    if(!process)
+    {
+        FIXME("we gave the application an invalid process\n");
+        return NULL;
+    }
+    FIXME("TODO: get PEB via the PID within fake object \n");
+    /* Option 1) Recursively copy PEB and into new buffer
+     * Option 2) Go insane trying to seperate kernel and user address space and redirect page faults into user address space
+     * */
+    
+    
+}
+
 /*********************************************************************
  *           PsGetProcessWow64Process    (NTOSKRNL.@)
  */
