@@ -946,6 +946,43 @@ jint JNI_OnLoad( JavaVM *vm, void *reserved )
 
 #endif  /* __ANDROID__ */
 
+
+static inline int mmap_reserve( void *addr, size_t size )
+{
+    void *ptr;
+    int flags = MAP_PRIVATE | MAP_ANON | MAP_NORESERVE;
+
+#ifdef MAP_TRYFIXED
+    flags |= MAP_TRYFIXED;
+#endif
+    ptr = mmap( addr, size, PROT_NONE, flags, -1, 0 );
+    if (ptr != addr && ptr != (void *)-1)  munmap( ptr, size );
+    return (ptr == addr);
+}
+
+
+static inline void reserve_area( void *addr, void *end )
+{
+    size_t size = (char *)end - (char *)addr;
+
+
+    if (!size) return;
+
+    if (mmap_reserve( addr, size ))
+    {
+        wine_mmap_add_reserved_area( addr, size );
+        return;
+    }
+    size = (size / 2) & ~0xffff;
+    if (size)
+    {
+        reserve_area( addr, (char *)addr + size );
+        reserve_area( (char *)addr + size, end );
+    }
+    
+}
+
+
 /***********************************************************************
  *           wine_init
  *
@@ -972,6 +1009,13 @@ void wine_init( int argc, char *argv[], char *error, int error_size )
     __wine_main_argv = argv;
     __wine_main_environ = __wine_get_main_environment();
     mmap_init();
+
+    if(strcmp(__wine_main_argv[1], "C:\\windows\\system32\\winedevice.exe"))
+    {
+        reserve_area(0x7fffffff000, 0x7ffffffff000);
+    }else{
+        reserve_area(0x0, 0x7fffffff000);
+    }
 
     for (path = first_dll_path( "ntdll.dll", 0, &context ); path; path = next_dll_path( &context ))
     {

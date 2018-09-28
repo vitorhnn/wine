@@ -131,8 +131,8 @@ static void *address_space_start = (void *)0x110000;    /* keep DOS area clear *
 static const UINT page_shift = 12;
 static const UINT_PTR page_mask = 0xfff;
 static void *address_space_limit = (void *)0x7fffffff0000;
-static void *user_space_limit    = (void *)0x7fffffff0000;
-static void *working_set_limit   = (void *)0x7fffffff0000;
+static void *user_space_limit    = (void *)0x7ffffff0000;
+static void *working_set_limit   = (void *)0x7ffffff0000;
 static void *address_space_start = (void *)0x10000;
 #else
 UINT_PTR page_size = 0;
@@ -144,6 +144,7 @@ static void *working_set_limit;
 static void *address_space_start = (void *)0x10000;
 #endif  /* __i386__ */
 static const BOOL is_win64 = (sizeof(void *) > sizeof(int));
+static int  is_winedevice        = 0;
 
 #define ROUND_ADDR(addr,mask) \
    ((void *)((UINT_PTR)(addr) & ~(UINT_PTR)(mask)))
@@ -1088,6 +1089,9 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size, 
     void *ptr;
     NTSTATUS status;
 
+    if(is_winedevice && base && base < 0x80000000000)
+        base = 0x80000000000;
+
     if (base)
     {
         if (is_beyond_limit( base, size, address_space_limit ))
@@ -1812,6 +1816,15 @@ void virtual_init(void)
             if (preload_reserve_start)
                 address_space_start = min( address_space_start, preload_reserve_start );
         }
+    }
+
+    /* If winedevice, change user space range */
+    if(!strcmp(__wine_main_argv[1], "C:\\windows\\system32\\winedevice.exe"))
+    {   
+        user_space_limit = 0x7fffffff0000;
+        working_set_limit = 0x7fffffff0000;
+        address_space_start = 0x800000000000;
+        is_winedevice = 1;
     }
 
     /* try to find space in a reserved area for the views and pages protection table */
