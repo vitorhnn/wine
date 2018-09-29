@@ -2091,6 +2091,8 @@ static PEPROCESS get_or_create_process_object(DWORD pid)
 {
     PEPROCESS new_object;
     struct process_object_container *container;
+    PROCESS_BASIC_INFORMATION pbi;
+    NTSTATUS status;
     
     /* see if we already have the object */
     LIST_FOR_EACH_ENTRY( container, &process_objects, struct process_object_container, entry )
@@ -2106,6 +2108,18 @@ static PEPROCESS get_or_create_process_object(DWORD pid)
     new_object->header.SignalState = 1;
     
     new_object->Pid = pid;
+    
+    new_object->PebAddress = 0; /* Fallback if we fail to query */
+
+    /* Get a handle with necessary permissions */
+    new_object->ProcessHandle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, FALSE, pid);
+
+    status = NtQueryInformationProcess(new_object->ProcessHandle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
+
+    if(status) 
+        FIXME("Unable to get PEB address from process %u\n", pid);
+    else
+        new_object->PebAddress = pbi.PebBaseAddress;
     
     /* create container */
     container = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(*container));
@@ -4266,10 +4280,8 @@ PPEB WINAPI PsGetProcessPeb(PEPROCESS process)
         FIXME("we gave the application an invalid process\n");
         return NULL;
     }
-    FIXME("TODO: get PEB via the PID within fake object \n");
-    /* Option 1) Recursively copy PEB and into new buffer
-     * Option 2) Go insane trying to seperate kernel and user address space and redirect page faults into user address space
-     * */
+    
+    return process->PebAddress;
     
     
 }

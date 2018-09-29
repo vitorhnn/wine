@@ -15,6 +15,8 @@ struct _EPROCESS
 {
     DISPATCHER_HEADER header; /* This is here for compatibility reasons */
     DWORD Pid;
+    PPEB PebAddress;
+    HANDLE ProcessHandle;
 };
 
 struct _OBJECT_TYPE
