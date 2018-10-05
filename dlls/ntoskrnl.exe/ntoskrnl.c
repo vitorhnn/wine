@@ -2114,6 +2114,10 @@ static PEPROCESS get_or_create_process_object(DWORD pid)
     /* Get a handle with necessary permissions */
     new_object->ProcessHandle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, FALSE, pid);
 
+    /* store in PEB so signal handler can access */
+    NtCurrentTeb()->Peb->Reserved[0] = (ULONG) new_object->ProcessHandle;
+
+
     status = NtQueryInformationProcess(new_object->ProcessHandle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
 
     if(status) 
@@ -4283,7 +4287,7 @@ PPEB WINAPI PsGetProcessPeb(PEPROCESS process)
     
     return process->PebAddress;
     
-    
+
 }
 
 /*********************************************************************

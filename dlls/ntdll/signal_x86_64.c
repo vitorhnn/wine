@@ -45,6 +45,9 @@
 #  include <sys/syscall.h>
 # endif
 #endif
+#ifdef HAVE_SYS_MMAN_H
+#include <sys/mman.h>
+#endif
 #ifdef HAVE_SYS_SIGNAL_H
 # include <sys/signal.h>
 #endif
@@ -3037,6 +3040,80 @@ static inline BOOL handle_interrupt( unsigned int interrupt, EXCEPTION_RECORD *r
     }
 }
 
+DWORD mapping_tls_index;
+static int is_winedevice_stored = -1;
+static int is_winedevice(void)
+{
+    if(is_winedevice_stored != -1) return is_winedevice_stored;
+    /* detect whether we are 64-bit winedevice */
+    UNICODE_STRING winedeviceUS;
+    static const WCHAR winedeviceW[] = {'C',':','\\','w','i','n','d','o','w','s','\\','s','y','s','t','e','m','3','2','\\','w','i','n','e','d','e','v','i','c','e','.','e','x','e',0};
+
+    RtlCreateUnicodeString(&winedeviceUS, winedeviceW);
+
+    is_winedevice_stored = !RtlCompareUnicodeString(&winedeviceUS, &NtCurrentTeb()->Peb->ProcessParameters->ImagePathName, TRUE);
+    return is_winedevice_stored;
+}
+
+
+static int map_userspace(siginfo_t *siginfo, ucontext_t *sigcontext, HANDLE process)
+{
+    void *fault_addr;
+    void *page_addr;
+    SIZE_T bytes_read;
+    NTSTATUS stat;
+
+    fault_addr = siginfo->si_addr;
+
+    if(fault_addr < (void*) 0x0000FFFF)
+    {
+        /* probably a null pointer issue */
+        return 0;
+    }
+
+    FIXME("trying to access address %p in \"user-space\"\n", fault_addr);
+
+    /* if the access is read, we don't handle this */
+    if(ERROR_sig(sigcontext) & 0x2)
+    {
+        FIXME("we don't handle write operations\n");
+        return 0;
+    }
+
+    if(!process)
+    {
+        FIXME("no user-space process known\n");
+        return 0;
+    }
+
+    /* round down the address to a page*/
+    page_addr = fault_addr - ((long) fault_addr % getpagesize());
+
+    /* map the memory*/
+    if(page_addr != mmap(page_addr, getpagesize() * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0))
+    {
+        FIXME("unable to map memory for user-space access\n");
+        return 0;
+    }
+
+    /* read the memory from the desired process into our map, 32 is the maximum bytes read by one instruction */
+    stat = NtReadVirtualMemory(process, fault_addr, fault_addr, 32, &bytes_read);
+
+    if(stat || !bytes_read)
+    {
+        FIXME("Unable to read memory from user space stat=%u bytes_read=%lu", stat, bytes_read);
+        munmap(page_addr, getpagesize() * 2);
+        return 0;
+    }
+
+    /* enable tracing so we unmap after instruction */
+    sigcontext->uc_mcontext.gregs[REG_EFL] |= 0x100;
+
+    NtCurrentTeb()->TlsSlots[mapping_tls_index] = page_addr;
+
+    return 1;
+}
+
 
 /**********************************************************************
  *		segv_handler
@@ -3047,6 +3124,13 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
     EXCEPTION_RECORD *rec;
     ucontext_t *ucontext = sigcontext;
+
+    if(is_winedevice() && TRAP_sig(ucontext) == TRAP_x86_PAGEFLT)
+    {
+      /* see if we can access user space address */
+      if(map_userspace(siginfo, ucontext, (HANDLE)(ULONGLONG) NtCurrentTeb()->Peb->Reserved[0]))
+        return;
+    }
 
     /* check for page fault inside the thread stack */
     if (TRAP_sig(ucontext) == TRAP_x86_PAGEFLT &&
@@ -3117,6 +3201,29 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
     }
 }
 
+static int unmap_userspace(siginfo_t *siginfo, void *sigcontext)
+{
+    ucontext_t *ucontext;
+    void *mapping;
+
+    ucontext = (ucontext_t *) sigcontext;
+    mapping = NtCurrentTeb()->TlsSlots[mapping_tls_index];
+
+    /* TODO: validate instruction pointer */
+    if(!mapping) return 1;
+
+    if(munmap(mapping, getpagesize() * 2))
+    {
+        FIXME("unmap unsuccessful");
+    }
+
+    ucontext->uc_mcontext.gregs[REG_EFL] &= 0xFFFFFEFF;
+
+    NtCurrentTeb()->TlsSlots[mapping_tls_index] = 0;
+
+    return 1;
+}
+
 /**********************************************************************
  *		trap_handler
  *
@@ -3124,7 +3231,11 @@ static void segv_handler( int signal, siginfo_t *siginfo, void *sigcontext )
  */
 static void trap_handler( int signal, siginfo_t *siginfo, void *sigcontext )
 {
-    EXCEPTION_RECORD *rec = setup_exception( sigcontext, raise_trap_exception );
+    EXCEPTION_RECORD *rec;
+
+    if(siginfo->si_code == TRAP_TRACE && is_winedevice() && unmap_userspace(siginfo, sigcontext)) return;
+
+    rec = setup_exception( sigcontext, raise_trap_exception );
 
     switch (siginfo->si_code)
     {
@@ -3432,7 +3543,17 @@ void signal_init_process(void)
 #ifdef SIGTRAP
     sig_act.sa_sigaction = trap_handler;
     if (sigaction( SIGTRAP, &sig_act, NULL ) == -1) goto error;
+#else
+    goto error;
 #endif
+
+    /* manually do what TlsAlloc does */
+    RtlAcquirePebLock();
+    mapping_tls_index = RtlFindClearBits( NtCurrentTeb()->Peb->TlsBitmap, 1, 1);
+    RtlReleasePebLock();
+    if(mapping_tls_index == ~0U) goto error;
+    NtCurrentTeb()->TlsSlots[mapping_tls_index] = 0;
+
     return;
 
  error:
