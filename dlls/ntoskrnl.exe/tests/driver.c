@@ -148,8 +148,14 @@ static void test_currentprocess(void)
     PEPROCESS current;
 
     current = IoGetCurrentProcess();
-todo_wine
+    
     ok(current != NULL, "Expected current process to be non-NULL\n");
+
+    PPEB process_peb = PsGetProcessPeb(current);
+
+    ok(process_peb != NULL, "Expected current process PEB to be non-NULL\n");
+
+    ok(process_peb->ProcessParameters->ImagePathName.Buffer != NULL, "Expected ImagePathName to be non-NULL\n");
 }
 
 static void test_mdl_map(void)
