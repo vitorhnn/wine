@@ -1453,6 +1453,7 @@ NTSTATUS  WINAPI PsCreateSystemThread(PHANDLE,ULONG,POBJECT_ATTRIBUTES,HANDLE,PC
 #define          PsGetCurrentThread() ((PETHREAD)KeGetCurrentThread())
 HANDLE    WINAPI PsGetCurrentProcessId(void);
 HANDLE    WINAPI PsGetCurrentThreadId(void);
+PPEB      WINAPI PsGetProcessPeb(PEPROCESS Process);
 BOOLEAN   WINAPI PsGetVersion(ULONG*,ULONG*,ULONG*,UNICODE_STRING*);
 NTSTATUS  WINAPI PsTerminateSystemThread(NTSTATUS);
 

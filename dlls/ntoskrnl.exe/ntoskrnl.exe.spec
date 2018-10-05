@@ -880,7 +880,7 @@
 @ stub PsGetProcessImageFileName
 @ stub PsGetProcessInheritedFromUniqueProcessId
 @ stub PsGetProcessJob
-@ stdcall PsGetProcessPeb()
+@ stdcall PsGetProcessPeb(ptr)
 @ stub PsGetProcessPriorityClass
 @ stub PsGetProcessSectionBaseAddress
 @ stub PsGetProcessSecurityPort
