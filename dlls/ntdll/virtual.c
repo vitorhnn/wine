@@ -144,7 +144,6 @@ static void *working_set_limit;
 static void *address_space_start = (void *)0x10000;
 #endif  /* __i386__ */
 static const BOOL is_win64 = (sizeof(void *) > sizeof(int));
-static int  is_winedevice        = 0;
 
 #define ROUND_ADDR(addr,mask) \
    ((void *)((UINT_PTR)(addr) & ~(UINT_PTR)(mask)))
@@ -1089,9 +1088,6 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size, 
     void *ptr;
     NTSTATUS status;
 
-    if(is_winedevice && base && base < 0x80000000000)
-        base = 0x80000000000;
-
     if (base)
     {
         if (is_beyond_limit( base, size, address_space_limit ))
@@ -1824,7 +1820,6 @@ void virtual_init(void)
         user_space_limit = 0x7fffffff0000;
         working_set_limit = 0x7fffffff0000;
         address_space_start = 0x800000000000;
-        is_winedevice = 1;
     }
 
     /* try to find space in a reserved area for the views and pages protection table */
