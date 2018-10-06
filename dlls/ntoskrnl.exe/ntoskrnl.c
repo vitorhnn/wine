@@ -2149,14 +2149,14 @@ PEPROCESS WINAPI IoGetCurrentProcess(void)
     }
 }
 
-static void init_current_kthread(void)
+static void init_kthread(PTEB teb)
 {
     struct _KTHREAD *kthread = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x0360);
 
     kthread->header.Type = ThreadObject;
     kthread->header.Size = 0x18;
     kthread->header.SignalState = 1;
-    
+
     for(unsigned int i = 0; i < 4; i++)
         kthread->WaitBlock[i].Thread = kthread;
 
@@ -2164,7 +2164,7 @@ static void init_current_kthread(void)
 
     kthread->wakeup_event = CreateEventW(NULL, FALSE, FALSE, NULL);
 
-    NtCurrentTeb()->Spare4 = kthread;
+    teb->Spare4 = kthread;
 }
 
 /***********************************************************************
@@ -2176,7 +2176,7 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
     TRACE("() returning KTHREAD structure from TEB\n");
 
     if (!NtCurrentTeb()->Spare4)
-        init_current_kthread();
+        init_kthread(NtCurrentTeb());
 
     return NtCurrentTeb()->Spare4;
 }
@@ -2789,10 +2789,25 @@ NTSTATUS WINAPI ObReferenceObjectByHandle( HANDLE obj, ACCESS_MASK access,
                                            KPROCESSOR_MODE mode, PVOID* ptr,
                                            POBJECT_HANDLE_INFORMATION info)
 {
+    NTSTATUS stat;
+    THREAD_BASIC_INFORMATION tbi;
+    PVOID object = UlongToHandle(0xdeadbeaf);
+    
     FIXME( "stub: %p %x %p %d %p %p object type: %s\n", obj, access, type, mode, ptr, info, (type ? debugstr_us(&type->Name) : "") );
+    
+    stat = NtQueryInformationThread(obj, ThreadBasicInformation, &tbi, sizeof(tbi), NULL);
+    if(!stat)
+    {
+        TRACE("setting to object to the PKTHREAD\n");
+        PTEB thread_teb = (PTEB)tbi.TebBaseAddress;
+        if(!thread_teb->Spare4)
+            init_kthread(thread_teb);
+        object = thread_teb->Spare4;
+    }
+    
 
     if(ptr)
-        *ptr = UlongToHandle(0xdeadbeaf);
+        *ptr = object;
 
     return STATUS_SUCCESS;
 }
@@ -4269,9 +4284,7 @@ void WINAPI ExfUnblockPushLock( EX_PUSH_LOCK *lock, PEX_PUSH_LOCK_WAIT_BLOCK blo
  */
 HANDLE WINAPI PsGetProcessId(PEPROCESS process)
 {
-    FIXME("stub: %p\n", process);
-
-    return 0;
+    return process->Pid;
 }
 
 /********************************************************************* 
