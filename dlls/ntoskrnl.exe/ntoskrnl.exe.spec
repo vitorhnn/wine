@@ -624,11 +624,11 @@
 @ stub KeSetTimeIncrement
 @ stub KeSetTimer
 @ stdcall KeSetTimerEx(ptr int64 long ptr)
-@ stub KeStackAttachProcess
+@ stdcall KeStackAttachProcess(ptr ptr)
 @ stub KeSynchronizeExecution
 @ stub KeTerminateThread
 @ extern KeTickCount
-@ stub KeUnstackDetachProcess
+@ stdcall KeUnstackDetachProcess(ptr)
 @ stub KeUpdateRunTime
 @ stub KeUpdateSystemTime
 @ stub KeUserModeCallback

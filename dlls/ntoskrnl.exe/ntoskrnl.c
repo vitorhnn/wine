@@ -4354,3 +4354,25 @@ NTSTATUS WINAPI DbgQueryDebugFilterState(ULONG component, ULONG level)
     FIXME("stub: %d %d\n", component, level);
     return STATUS_NOT_IMPLEMENTED;
 }
+
+/*********************************************************************
+ *           KeStackAttachProcess    (NTOSKRNL.@)
+ */
+void WINAPI KeStackAttachProcess(PRKPROCESS Process, PRKAPC_STATE ApcState)
+{
+    /* we don't support KPROCESSs, must be an EPROCESS */
+    PEPROCESS e_process = (PEPROCESS) Process;
+
+    if(e_process == IoGetCurrentProcess()) 
+        return;
+    else 
+        FIXME("stub: %p %p\n", Process, ApcState);
+}
+
+/*********************************************************************
+ *           KeUnStackDeAttachProcess    (NTOSKRNL.@)
+ */
+void WINAPI KeUnstackDetachProcess(PRKAPC_STATE ApcState)
+{
+    FIXME("stub: %p\n", ApcState);
+}

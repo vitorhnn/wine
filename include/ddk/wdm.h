@@ -145,11 +145,13 @@ typedef enum _KWAIT_REASON
 } KWAIT_REASON;
 
 typedef struct _ALLOCATE_FUNCTION *PALLOCATE_FUNCTION;
+typedef struct _KAPC_STATE *PKAPC_STATE, *PRKAPC_STATE;
 typedef struct _IO_TIMER *PIO_TIMER;
 typedef struct _IO_TIMER_ROUTINE *PIO_TIMER_ROUTINE;
 typedef struct _ETHREAD *PETHREAD;
 typedef struct _FREE_FUNCTION *PFREE_FUNCTION;
 typedef struct _KTHREAD *PKTHREAD, *PRKTHREAD;
+typedef struct _KPROCESS *PKPROCESS, *PRKPROCESS;
 typedef struct _EPROCESS *PEPROCESS;
 typedef struct _ERESOURCE *PERESOURCE;
 typedef struct _IO_WORKITEM *PIO_WORKITEM;
