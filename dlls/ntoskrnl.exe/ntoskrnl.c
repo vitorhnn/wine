@@ -2976,6 +2976,7 @@ NTSTATUS WINAPI PsCreateSystemThread(PHANDLE ThreadHandle, ULONG DesiredAccess,
     return RtlCreateUserThread(ProcessHandle, 0, FALSE, 0, 0,
                                0, StartRoutine, StartContext,
                                ThreadHandle, ClientId);
+    Sleep(500);
 }
 
 /***********************************************************************
