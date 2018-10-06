@@ -4284,7 +4284,8 @@ void WINAPI ExfUnblockPushLock( EX_PUSH_LOCK *lock, PEX_PUSH_LOCK_WAIT_BLOCK blo
  */
 HANDLE WINAPI PsGetProcessId(PEPROCESS process)
 {
-    return process->Pid;
+    if(MmIsAddressValid(process))
+        return process->Pid;
 }
 
 /********************************************************************* 
