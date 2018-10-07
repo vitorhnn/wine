@@ -4287,6 +4287,7 @@ HANDLE WINAPI PsGetProcessId(PEPROCESS process)
 {
     if(MmIsAddressValid(process))
         return process->Pid;
+    else return NULL;
 }
 
 /********************************************************************* 

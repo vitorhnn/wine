@@ -3101,9 +3101,15 @@ static int map_userspace(siginfo_t *siginfo, ucontext_t *sigcontext, HANDLE proc
 
     if(stat || !bytes_read)
     {
-        FIXME("Unable to read memory from user space stat=%u bytes_read=%lu", stat, bytes_read);
-        munmap(page_addr, getpagesize() * 2);
-        return 0;
+        /* try again, read one byte this time*/
+        stat = NtReadVirtualMemory(process, fault_addr, fault_addr, 1, &bytes_read);
+
+        if(stat || !bytes_read)
+        {
+            FIXME("Unable to read memory from user space stat=%u bytes_read=%lu", stat, bytes_read);
+            munmap(page_addr, getpagesize() * 2);
+            return 0;
+        }
     }
 
     /* enable tracing so we unmap after instruction */
