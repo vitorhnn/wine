@@ -123,8 +123,9 @@ static const struct object_ops device_manager_ops =
 /* driver in client process, not an object */
 struct driver
 {
-    struct list entry;          /* entry in device manager list */
-    struct unicode_str path;    /* path to .sys in DOS format */
+    struct list entry;       /* entry in device manager list */
+    data_size_t path_len;    /* length of path string */
+    WCHAR *path;             /* path to .sys in DOS format */
 };
 
 
@@ -674,7 +675,11 @@ DECL_HANDLER(add_driver)
     
     driver = mem_alloc( sizeof(struct driver));
 
-    driver->path = path;
+    driver->path_len = path.len + 2;
+    driver->path = mem_alloc(path.len + 2);
+    memcpy(driver->path, path.str, path.len);
+    driver->path[path.len / 2] = 0;
+
     list_add_tail( &manager->drivers, &driver->entry );
 
     reply->driver = driver;
@@ -823,4 +828,18 @@ DECL_HANDLER(enum_drivers)
     
     reply->next = index;
     set_error( STATUS_NO_MORE_ENTRIES );
+}
+
+/* provide information about loaded driver */
+DECL_HANDLER( get_driver_info )
+{
+    if(!req->driver)
+    {
+        set_error( STATUS_INVALID_PARAMETER );
+        return;
+    }
+
+    struct driver *driver = (struct driver*)req->driver;
+
+    set_reply_data( driver->path, min( driver->path_len, get_reply_max_size() ) );
 }

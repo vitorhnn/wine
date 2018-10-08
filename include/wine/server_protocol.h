@@ -5262,6 +5262,21 @@ struct enum_drivers_reply
 };
 
 
+
+struct get_driver_info_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+    client_ptr_t driver;
+};
+struct get_driver_info_reply
+{
+    struct reply_header __header;
+    /* VARARG(path,unicode_str); */
+};
+
+
+
 struct get_next_device_request_request
 {
     struct request_header __header;
@@ -5958,6 +5973,7 @@ enum request
     REQ_remove_driver,
     REQ_delete_device,
     REQ_enum_drivers,
+    REQ_get_driver_info,
     REQ_get_next_device_request,
     REQ_make_process_system,
     REQ_get_token_statistics,
@@ -6258,6 +6274,7 @@ union generic_request
     struct remove_driver_request remove_driver_request;
     struct delete_device_request delete_device_request;
     struct enum_drivers_request enum_drivers_request;
+    struct get_driver_info_request get_driver_info_request;
     struct get_next_device_request_request get_next_device_request_request;
     struct make_process_system_request make_process_system_request;
     struct get_token_statistics_request get_token_statistics_request;
@@ -6556,6 +6573,7 @@ union generic_reply
     struct remove_driver_reply remove_driver_reply;
     struct delete_device_reply delete_device_reply;
     struct enum_drivers_reply enum_drivers_reply;
+    struct get_driver_info_reply get_driver_info_reply;
     struct get_next_device_request_reply get_next_device_request_reply;
     struct make_process_system_reply make_process_system_reply;
     struct get_token_statistics_reply get_token_statistics_reply;
@@ -6585,6 +6603,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 563
+#define SERVER_PROTOCOL_VERSION 564
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

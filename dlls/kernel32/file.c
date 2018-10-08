@@ -2912,12 +2912,32 @@ DWORD WINAPI K32GetDeviceDriverFileNameA(void *image_base, LPSTR file_name, DWOR
  */
 DWORD WINAPI K32GetDeviceDriverFileNameW(void *image_base, LPWSTR file_name, DWORD size)
 {
+    WCHAR path[size];
+    UNICODE_STRING nt_path;
+    NTSTATUS status;
+
     FIXME("(%p, %p, %d): stub\n", image_base, file_name, size);
 
-    if (file_name && size)
-        file_name[0] = '\0';
+    SERVER_START_REQ( get_driver_info )
+    {
+        req->driver = (client_ptr_t) image_base;
+        wine_server_set_reply( req, path, sizeof(path)) ;
+        wine_server_call( req );
+    }
+    SERVER_END_REQ;
 
-    return 0;
+    status = RtlDosPathNameToNtPathName_U_WithStatus(path, &nt_path, NULL, NULL);
+
+    if(status)
+    {
+        SetLastError(RtlNtStatusToDosError(status));
+        return 0;
+    }
+
+    RtlCopyMemory(file_name, nt_path.Buffer, size * sizeof(WCHAR));
+    file_name[size] = 0;
+
+    return 1;
 }
 
 /***********************************************************************

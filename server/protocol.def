@@ -3627,6 +3627,15 @@ struct handle_info
     client_ptr_t address;
 @END
 
+
+/* Get information about a loaded driver */
+@REQ(get_driver_info)
+    client_ptr_t driver;
+@REPLY
+    VARARG(path,unicode_str);
+@END
+
+
 /* Retrieve the next pending device irp request */
 @REQ(get_next_device_request)
     obj_handle_t manager;         /* handle to the device manager */

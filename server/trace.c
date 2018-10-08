@@ -4313,6 +4313,16 @@ static void dump_enum_drivers_reply( const struct enum_drivers_reply *req )
     dump_uint64( ", address=", &req->address );
 }
 
+static void dump_get_driver_info_request( const struct get_driver_info_request *req )
+{
+    dump_uint64( " driver=", &req->driver );
+}
+
+static void dump_get_driver_info_reply( const struct get_driver_info_reply *req )
+{
+    dump_varargs_unicode_str( " path=", cur_size );
+}
+
 static void dump_get_next_device_request_request( const struct get_next_device_request_request *req )
 {
     fprintf( stderr, " manager=%04x", req->manager );
@@ -4839,6 +4849,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_remove_driver_request,
     (dump_func)dump_delete_device_request,
     (dump_func)dump_enum_drivers_request,
+    (dump_func)dump_get_driver_info_request,
     (dump_func)dump_get_next_device_request_request,
     (dump_func)dump_make_process_system_request,
     (dump_func)dump_get_token_statistics_request,
@@ -5135,6 +5146,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     NULL,
     (dump_func)dump_enum_drivers_reply,
+    (dump_func)dump_get_driver_info_reply,
     (dump_func)dump_get_next_device_request_reply,
     (dump_func)dump_make_process_system_reply,
     (dump_func)dump_get_token_statistics_reply,
@@ -5431,6 +5443,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "remove_driver",
     "delete_device",
     "enum_drivers",
+    "get_driver_info",
     "get_next_device_request",
     "make_process_system",
     "get_token_statistics",

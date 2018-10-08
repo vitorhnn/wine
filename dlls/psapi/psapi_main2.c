@@ -115,13 +115,13 @@ DWORD WINAPI GetDeviceDriverBaseNameW(LPVOID one, LPWSTR two, DWORD three)
   return K32GetDeviceDriverBaseNameW(one, two, three);
 }
 
-
+DWORD WINAPI K32GetDeviceDriverFileNameA( LPVOID image_base, LPSTR file_name, DWORD size );
 DWORD WINAPI GetDeviceDriverFileNameA(LPVOID one, LPSTR two, DWORD three)
 {
   return K32GetDeviceDriverFileNameA(one, two, three);
 }
 
-
+DWORD WINAPI K32GetDeviceDriverFileNameW(LPVOID image_base, LPWSTR file_name, DWORD size);
 DWORD WINAPI GetDeviceDriverFileNameW(LPVOID one, LPWSTR two, DWORD three)
 {
   return K32GetDeviceDriverFileNameW(one, two, three);
