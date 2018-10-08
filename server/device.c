@@ -39,6 +39,8 @@
 #include "request.h"
 #include "process.h"
 
+static struct list manager_list = LIST_INIT(manager_list);
+
 /* IRP object */
 
 struct irp_call
@@ -88,6 +90,7 @@ struct device_manager
     struct list            drivers;       /* list of drivers */
     struct list            devices;       /* list of devices */
     struct list            requests;      /* list of pending irps across all devices */
+    struct list            global_entry;  /* entry in global manager list*/
 };
 
 static void device_manager_dump( struct object *obj, int verbose );
@@ -624,12 +627,7 @@ static void device_manager_destroy( struct object *obj )
         delete_device( device );
     }
 
-    while ((ptr = list_head( &manager->drivers )))
-    {
-        struct driver *driver = LIST_ENTRY( ptr, struct driver, entry );
-        list_remove( &driver->entry );
-        free( driver );
-    }
+    list_remove( &manager->global_entry );
 }
 
 static struct device_manager *create_device_manager(void)
@@ -641,7 +639,10 @@ static struct device_manager *create_device_manager(void)
         list_init( &manager->drivers );
         list_init( &manager->devices );
         list_init( &manager->requests );
+
+        list_add_tail( &manager_list, &manager->global_entry);
     }
+
     return manager;
 }
 
@@ -797,4 +798,26 @@ DECL_HANDLER(set_irp_result)
         close_handle( current->process, req->handle );  /* avoid an extra round-trip for close */
         release_object( irp );
     }
+}
+
+/* enumerate all active drivers */
+DECL_HANDLER(enum_drivers)
+{
+    struct device_manager *cur_manager;
+    struct driver *cur_driver;
+    unsigned int index = 0;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry )
+    {
+        LIST_FOR_EACH_ENTRY( cur_driver, &cur_manager->drivers, struct driver, entry)
+        {
+            if(req->index > index++) continue;
+            reply->address = (client_ptr_t) cur_driver;
+            reply->next = index;
+            return;
+        }
+    }
+    
+    reply->next = index;
+    set_error( STATUS_NO_MORE_ENTRIES );
 }

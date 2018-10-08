@@ -377,6 +377,7 @@ DECL_HANDLER(add_driver);
 DECL_HANDLER(create_device);
 DECL_HANDLER(remove_driver);
 DECL_HANDLER(delete_device);
+DECL_HANDLER(enum_drivers);
 DECL_HANDLER(get_next_device_request);
 DECL_HANDLER(make_process_system);
 DECL_HANDLER(get_token_statistics);
@@ -675,6 +676,7 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_create_device,
     (req_handler)req_remove_driver,
     (req_handler)req_delete_device,
+    (req_handler)req_enum_drivers,
     (req_handler)req_get_next_device_request,
     (req_handler)req_make_process_system,
     (req_handler)req_get_token_statistics,
@@ -2291,6 +2293,11 @@ C_ASSERT( FIELD_OFFSET(struct remove_driver_request, driver) == 16 );
 C_ASSERT( sizeof(struct remove_driver_request) == 24 );
 C_ASSERT( FIELD_OFFSET(struct delete_device_request, handle) == 12 );
 C_ASSERT( sizeof(struct delete_device_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct enum_drivers_request, index) == 12 );
+C_ASSERT( sizeof(struct enum_drivers_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct enum_drivers_reply, next) == 8 );
+C_ASSERT( FIELD_OFFSET(struct enum_drivers_reply, address) == 16 );
+C_ASSERT( sizeof(struct enum_drivers_reply) == 24 );
 C_ASSERT( FIELD_OFFSET(struct get_next_device_request_request, manager) == 12 );
 C_ASSERT( FIELD_OFFSET(struct get_next_device_request_request, prev) == 16 );
 C_ASSERT( FIELD_OFFSET(struct get_next_device_request_request, status) == 20 );

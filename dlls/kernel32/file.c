@@ -2838,10 +2838,32 @@ HANDLE WINAPI ReOpenFile(HANDLE handle_original, DWORD access, DWORD sharing, DW
  */
 BOOL WINAPI K32EnumDeviceDrivers(void **image_base, DWORD cb, DWORD *needed)
 {
+    unsigned int index = 0;
+    unsigned int total_bytes;
+    void *cur_driver;
+    NTSTATUS status;
+    
     FIXME("(%p, %d, %p): stub\n", image_base, cb, needed);
+    
+    while(TRUE)
+    {
+        SERVER_START_REQ(enum_drivers)
+        {
+            req->index = index;
+            status = wine_server_call( req );
+            cur_driver = reply->address;
+            index = reply->next;
+        }SERVER_END_REQ;
 
-    if (needed)
-        *needed = 0;
+        if(status == STATUS_NO_MORE_ENTRIES) break;
+        if( cb < (index * sizeof(void*)) ) continue;
+        image_base[index] = cur_driver;
+    }
+
+    total_bytes = (index * sizeof(void*));
+
+    if(needed)
+        *needed = (DWORD) total_bytes;
 
     return TRUE;
 }

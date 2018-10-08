@@ -3611,11 +3611,20 @@ struct handle_info
     client_ptr_t driver;          /* server's opaque driver pointer */
 @END
 
+
 /* Delete a device */
 @REQ(delete_device)
     obj_handle_t handle;          /* handle to the device */
 @END
 
+
+/* Enum active drivers */
+@REQ(enum_drivers)
+    unsigned int index;
+@REPLY
+    unsigned int next;
+    client_ptr_t address;
+@END
 
 /* Retrieve the next pending device irp request */
 @REQ(get_next_device_request)
