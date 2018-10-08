@@ -3588,6 +3588,7 @@ struct handle_info
 /* Add a driver */
 @REQ(add_driver)
     obj_handle_t manager;         /* device manager */
+    VARARG(path,unicode_str);     /* driver path */
 @REPLY
     client_ptr_t driver;          /* server's opaque driver pointer */
 @END

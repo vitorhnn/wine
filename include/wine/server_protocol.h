@@ -5193,6 +5193,7 @@ struct add_driver_request
 {
     struct request_header __header;
     obj_handle_t manager;
+    /* VARARG(path,unicode_str); */
 };
 struct add_driver_reply
 {
@@ -6584,6 +6585,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 562
+#define SERVER_PROTOCOL_VERSION 563
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

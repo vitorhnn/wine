@@ -123,7 +123,8 @@ static const struct object_ops device_manager_ops =
 /* driver in client process, not an object */
 struct driver
 {
-    struct list entry;    /* entry in device manager list */
+    struct list entry;          /* entry in device manager list */
+    struct unicode_str path;    /* path to .sys in DOS format */
 };
 
 
@@ -664,6 +665,7 @@ DECL_HANDLER(create_device_manager)
 DECL_HANDLER(add_driver)
 {
     struct driver *driver;
+    struct unicode_str path = get_req_unicode_str();
     struct device_manager *manager;
 
     if (!(manager = (struct device_manager *)get_handle_obj( current->process, req->manager,
@@ -672,6 +674,7 @@ DECL_HANDLER(add_driver)
     
     driver = mem_alloc( sizeof(struct driver));
 
+    driver->path = path;
     list_add_tail( &manager->drivers, &driver->entry );
 
     reply->driver = driver;

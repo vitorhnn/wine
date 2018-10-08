@@ -2859,7 +2859,7 @@ BOOL WINAPI K32EnumDeviceDrivers(void **image_base, DWORD cb, DWORD *needed)
         if( cb < (index * sizeof(void*)) ) continue;
         image_base[index-1] = cur_driver;
     }
-
+    FIXME("index=%u\n", index);
     total_bytes = (index * sizeof(void*));
 
     if(needed)

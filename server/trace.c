@@ -4269,6 +4269,7 @@ static void dump_create_device_manager_reply( const struct create_device_manager
 static void dump_add_driver_request( const struct add_driver_request *req )
 {
     fprintf( stderr, " manager=%04x", req->manager );
+    dump_varargs_unicode_str( ", path=", cur_size );
 }
 
 static void dump_add_driver_reply( const struct add_driver_reply *req )
