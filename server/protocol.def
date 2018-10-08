@@ -3585,6 +3585,14 @@ struct handle_info
 @END
 
 
+/* Add a driver */
+@REQ(add_driver)
+    obj_handle_t manager;         /* device manager */
+@REPLY
+    client_ptr_t driver;          /* server's opaque driver pointer */
+@END
+
+
 /* Create a device */
 @REQ(create_device)
     unsigned int access;          /* wanted access rights */
@@ -3597,6 +3605,11 @@ struct handle_info
     obj_handle_t handle;          /* handle to the device */
 @END
 
+
+/* Remove a driver*/
+@REQ(remove_driver)
+    client_ptr_t driver;          /* server's opaque driver pointer */
+@END
 
 /* Delete a device */
 @REQ(delete_device)

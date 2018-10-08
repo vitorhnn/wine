@@ -4266,6 +4266,16 @@ static void dump_create_device_manager_reply( const struct create_device_manager
     fprintf( stderr, " handle=%04x", req->handle );
 }
 
+static void dump_add_driver_request( const struct add_driver_request *req )
+{
+    fprintf( stderr, " manager=%04x", req->manager );
+}
+
+static void dump_add_driver_reply( const struct add_driver_reply *req )
+{
+    dump_uint64( " driver=", &req->driver );
+}
+
 static void dump_create_device_request( const struct create_device_request *req )
 {
     fprintf( stderr, " access=%08x", req->access );
@@ -4279,6 +4289,11 @@ static void dump_create_device_request( const struct create_device_request *req 
 static void dump_create_device_reply( const struct create_device_reply *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
+}
+
+static void dump_remove_driver_request( const struct remove_driver_request *req )
+{
+    dump_uint64( " driver=", &req->driver );
 }
 
 static void dump_delete_device_request( const struct delete_device_request *req )
@@ -4807,7 +4822,9 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_token_impersonation_level_request,
     (dump_func)dump_allocate_locally_unique_id_request,
     (dump_func)dump_create_device_manager_request,
+    (dump_func)dump_add_driver_request,
     (dump_func)dump_create_device_request,
+    (dump_func)dump_remove_driver_request,
     (dump_func)dump_delete_device_request,
     (dump_func)dump_get_next_device_request_request,
     (dump_func)dump_make_process_system_request,
@@ -5100,7 +5117,9 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_get_token_impersonation_level_reply,
     (dump_func)dump_allocate_locally_unique_id_reply,
     (dump_func)dump_create_device_manager_reply,
+    (dump_func)dump_add_driver_reply,
     (dump_func)dump_create_device_reply,
+    NULL,
     NULL,
     (dump_func)dump_get_next_device_request_reply,
     (dump_func)dump_make_process_system_reply,
@@ -5393,7 +5412,9 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "get_token_impersonation_level",
     "allocate_locally_unique_id",
     "create_device_manager",
+    "add_driver",
     "create_device",
+    "remove_driver",
     "delete_device",
     "get_next_device_request",
     "make_process_system",

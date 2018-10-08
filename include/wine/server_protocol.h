@@ -5189,6 +5189,19 @@ struct create_device_manager_reply
 
 
 
+struct add_driver_request
+{
+    struct request_header __header;
+    obj_handle_t manager;
+};
+struct add_driver_reply
+{
+    struct reply_header __header;
+    client_ptr_t driver;
+};
+
+
+
 struct create_device_request
 {
     struct request_header __header;
@@ -5207,6 +5220,18 @@ struct create_device_reply
     char __pad_12[4];
 };
 
+
+
+struct remove_driver_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+    client_ptr_t driver;
+};
+struct remove_driver_reply
+{
+    struct reply_header __header;
+};
 
 
 struct delete_device_request
@@ -5912,7 +5937,9 @@ enum request
     REQ_get_token_impersonation_level,
     REQ_allocate_locally_unique_id,
     REQ_create_device_manager,
+    REQ_add_driver,
     REQ_create_device,
+    REQ_remove_driver,
     REQ_delete_device,
     REQ_get_next_device_request,
     REQ_make_process_system,
@@ -6209,7 +6236,9 @@ union generic_request
     struct get_token_impersonation_level_request get_token_impersonation_level_request;
     struct allocate_locally_unique_id_request allocate_locally_unique_id_request;
     struct create_device_manager_request create_device_manager_request;
+    struct add_driver_request add_driver_request;
     struct create_device_request create_device_request;
+    struct remove_driver_request remove_driver_request;
     struct delete_device_request delete_device_request;
     struct get_next_device_request_request get_next_device_request_request;
     struct make_process_system_request make_process_system_request;
@@ -6504,7 +6533,9 @@ union generic_reply
     struct get_token_impersonation_level_reply get_token_impersonation_level_reply;
     struct allocate_locally_unique_id_reply allocate_locally_unique_id_reply;
     struct create_device_manager_reply create_device_manager_reply;
+    struct add_driver_reply add_driver_reply;
     struct create_device_reply create_device_reply;
+    struct remove_driver_reply remove_driver_reply;
     struct delete_device_reply delete_device_reply;
     struct get_next_device_request_reply get_next_device_request_reply;
     struct make_process_system_reply make_process_system_reply;
@@ -6535,6 +6566,6 @@ union generic_reply
     struct terminate_job_reply terminate_job_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 559
+#define SERVER_PROTOCOL_VERSION 561
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

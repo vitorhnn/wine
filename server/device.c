@@ -85,6 +85,7 @@ static const struct object_ops irp_call_ops =
 struct device_manager
 {
     struct object          obj;           /* object header */
+    struct list            drivers;       /* list of drivers */
     struct list            devices;       /* list of devices */
     struct list            requests;      /* list of pending irps across all devices */
 };
@@ -113,6 +114,13 @@ static const struct object_ops device_manager_ops =
     no_open_file,                     /* open_file */
     no_close_handle,                  /* close_handle */
     device_manager_destroy            /* destroy */
+};
+
+
+/* driver in client process, not an object */
+struct driver
+{
+    struct list entry;    /* entry in device manager list */
 };
 
 
@@ -623,6 +631,7 @@ static struct device_manager *create_device_manager(void)
 
     if ((manager = alloc_object( &device_manager_ops )))
     {
+        list_init( &manager->drivers );
         list_init( &manager->devices );
         list_init( &manager->requests );
     }
@@ -640,6 +649,36 @@ DECL_HANDLER(create_device_manager)
         reply->handle = alloc_handle( current->process, manager, req->access, req->attributes );
         release_object( manager );
     }
+}
+
+
+/* add a driver */
+DECL_HANDLER(add_driver)
+{
+    struct driver *driver;
+    struct device_manager *manager;
+
+    if (!(manager = (struct device_manager *)get_handle_obj( current->process, req->manager,
+                                                             0, &device_manager_ops )))
+        return;
+    
+    driver = mem_alloc( sizeof(struct driver));
+
+    list_add_tail( &manager->drivers, &driver->entry );
+
+    reply->driver = driver;
+
+    release_object(manager);
+}
+
+
+/* remove a driver */
+DECL_HANDLER(remove_driver)
+{
+    if(!req->driver)
+        return;
+    list_remove( &((struct driver *)(req->driver))->entry );
+    free(req->driver);
 }
 
 

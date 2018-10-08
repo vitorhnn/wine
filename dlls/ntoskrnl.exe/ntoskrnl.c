@@ -108,6 +108,7 @@ struct wine_driver
     DRIVER_OBJECT driver_obj;
     DRIVER_EXTENSION driver_extension;
     SERVICE_STATUS_HANDLE service_handle;
+    PVOID server_driver;
 };
 
 static NTSTATUS get_device_id( DEVICE_OBJECT *device, BUS_QUERY_ID_TYPE type, WCHAR **id );
@@ -1162,6 +1163,7 @@ NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
     struct wine_driver *driver;
     NTSTATUS status;
     unsigned int i;
+    HANDLE manager = get_device_manager();
 
     TRACE("(%s, %p)\n", debugstr_us(name), init);
 
@@ -1198,6 +1200,13 @@ NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
         driver->driver_obj.MajorFunction[i] = unhandled_irp;
     }
 
+    SERVER_START_REQ( add_driver )
+    {
+        req->manager = wine_server_obj_handle( manager );
+        if (!(status = wine_server_call( req ))) driver->server_driver = reply->driver;
+    }
+    SERVER_END_REQ;
+
     EnterCriticalSection( &drivers_cs );
     if (wine_rb_put( &wine_drivers, &driver->driver_obj.DriverName, &driver->entry ))
         ERR( "failed to insert driver %s in tree\n", debugstr_us(name) );
@@ -1211,7 +1220,15 @@ NTSTATUS WINAPI IoCreateDriver( UNICODE_STRING *name, PDRIVER_INITIALIZE init )
  */
 void WINAPI IoDeleteDriver( DRIVER_OBJECT *driver_object )
 {
+    struct wine_rb_entry *entry;
+    struct wine_driver *driver;
+    PVOID server_driver;
+
     TRACE( "(%p)\n", driver_object );
+
+    entry = wine_rb_get( &wine_drivers, &driver_object->DriverName );
+    struct wine_driver *wine_driver = WINE_RB_ENTRY_VALUE( entry, struct wine_driver, entry );
+    server_driver = wine_driver->server_driver;
 
     EnterCriticalSection( &drivers_cs );
     wine_rb_remove_key( &wine_drivers, &driver_object->DriverName );
@@ -1220,6 +1237,13 @@ void WINAPI IoDeleteDriver( DRIVER_OBJECT *driver_object )
     RtlFreeUnicodeString( &driver_object->DriverName );
     RtlFreeUnicodeString( &driver_object->DriverExtension->ServiceKeyName );
     RtlFreeHeap( GetProcessHeap(), 0, CONTAINING_RECORD( driver_object, struct wine_driver, driver_obj ) );
+
+    SERVER_START_REQ(remove_driver)
+    {
+        req->driver = server_driver;
+        wine_server_call( req );
+    }
+    SERVER_END_REQ;
 }
 
 

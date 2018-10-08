@@ -373,7 +373,9 @@ DECL_HANDLER(unlink_object);
 DECL_HANDLER(get_token_impersonation_level);
 DECL_HANDLER(allocate_locally_unique_id);
 DECL_HANDLER(create_device_manager);
+DECL_HANDLER(add_driver);
 DECL_HANDLER(create_device);
+DECL_HANDLER(remove_driver);
 DECL_HANDLER(delete_device);
 DECL_HANDLER(get_next_device_request);
 DECL_HANDLER(make_process_system);
@@ -669,7 +671,9 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_get_token_impersonation_level,
     (req_handler)req_allocate_locally_unique_id,
     (req_handler)req_create_device_manager,
+    (req_handler)req_add_driver,
     (req_handler)req_create_device,
+    (req_handler)req_remove_driver,
     (req_handler)req_delete_device,
     (req_handler)req_get_next_device_request,
     (req_handler)req_make_process_system,
@@ -2271,6 +2275,10 @@ C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, attributes) == 16 )
 C_ASSERT( sizeof(struct create_device_manager_request) == 24 );
 C_ASSERT( FIELD_OFFSET(struct create_device_manager_reply, handle) == 8 );
 C_ASSERT( sizeof(struct create_device_manager_reply) == 16 );
+C_ASSERT( FIELD_OFFSET(struct add_driver_request, manager) == 12 );
+C_ASSERT( sizeof(struct add_driver_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct add_driver_reply, driver) == 8 );
+C_ASSERT( sizeof(struct add_driver_reply) == 16 );
 C_ASSERT( FIELD_OFFSET(struct create_device_request, access) == 12 );
 C_ASSERT( FIELD_OFFSET(struct create_device_request, attributes) == 16 );
 C_ASSERT( FIELD_OFFSET(struct create_device_request, rootdir) == 20 );
@@ -2279,6 +2287,8 @@ C_ASSERT( FIELD_OFFSET(struct create_device_request, manager) == 32 );
 C_ASSERT( sizeof(struct create_device_request) == 40 );
 C_ASSERT( FIELD_OFFSET(struct create_device_reply, handle) == 8 );
 C_ASSERT( sizeof(struct create_device_reply) == 16 );
+C_ASSERT( FIELD_OFFSET(struct remove_driver_request, driver) == 16 );
+C_ASSERT( sizeof(struct remove_driver_request) == 24 );
 C_ASSERT( FIELD_OFFSET(struct delete_device_request, handle) == 12 );
 C_ASSERT( sizeof(struct delete_device_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct get_next_device_request_request, manager) == 12 );
