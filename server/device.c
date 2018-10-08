@@ -623,6 +623,13 @@ static void device_manager_destroy( struct object *obj )
         struct device *device = LIST_ENTRY( ptr, struct device, entry );
         delete_device( device );
     }
+
+    while ((ptr = list_head( &manager->drivers )))
+    {
+        struct driver *driver = LIST_ENTRY( ptr, struct driver, entry );
+        list_remove( &driver->entry );
+        free( driver );
+    }
 }
 
 static struct device_manager *create_device_manager(void)
@@ -678,7 +685,7 @@ DECL_HANDLER(remove_driver)
     if(!req->driver)
         return;
     list_remove( &((struct driver *)(req->driver))->entry );
-    free(req->driver);
+    free( ((struct driver *)(req->driver)) );
 }
 
 
