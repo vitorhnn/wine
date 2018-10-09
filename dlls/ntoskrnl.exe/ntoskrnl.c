@@ -2539,6 +2539,7 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
         /* First check to make sure we need to wait */
         if(generic_object->Header.Type == MutantObject)
         {
+
             /* Mutex waits are different, as you can recursively obtain the mutex, so we must also check for ownership */
             if(mutex_object->Header.SignalState > 0 || mutex_object->OwnerThread == current_thread)
             {
@@ -2568,9 +2569,9 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
 
                     /* Thread has a list of acquired mutants, add to the tail of the list for accuracy purposes */
                     InsertTailList(&current_thread->MutantListHead, &mutex_object->MutantListEntry);
-
-                    return ret;
                 }
+
+                return ret;
             }
         }else if(generic_object->Header.SignalState > 0){
             TRACE("Waiting for non-mutex\n");
