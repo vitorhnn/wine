@@ -2981,11 +2981,15 @@ NTSTATUS WINAPI PsCreateSystemThread(PHANDLE ThreadHandle, ULONG DesiredAccess,
 			             HANDLE ProcessHandle, PCLIENT_ID ClientId,
                                      PKSTART_ROUTINE StartRoutine, PVOID StartContext)
 {
+    NTSTATUS status;
+
     if (!ProcessHandle) ProcessHandle = GetCurrentProcess();
-    return RtlCreateUserThread(ProcessHandle, 0, FALSE, 0, 0,
+    status =  RtlCreateUserThread(ProcessHandle, 0, TRUE, 0, 0,
                                0, StartRoutine, StartContext,
                                ThreadHandle, ClientId);
-    Sleep(500);
+    NtResumeThread(*ThreadHandle, NULL);
+
+    return status;
 }
 
 /***********************************************************************
