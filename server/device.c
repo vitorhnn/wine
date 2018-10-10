@@ -912,7 +912,7 @@ void dispatch_create_thread_event( struct thread *thread )
 
         event_apc.type = APC_USER;
         event_apc.user.func = cur_manager->event_handler;
-        event_apc.user.args[0] = EVENT_TYPE_THREAD_CREATE;
+        event_apc.user.args[0] = EVENT_TYPE_THREAD_TERMINATE;
         event_apc.user.args[1] = thread->id;
         event_apc.user.args[2] = 0;
         
