@@ -1103,6 +1103,9 @@ int thread_get_inflight_fd( struct thread *thread, int client )
 void kill_thread( struct thread *thread, int violent_death )
 {
     if (thread->state == TERMINATED) return;  /* already killed */
+
+    dispatch_terminate_thread_event( thread );
+
     thread->state = TERMINATED;
     thread->exit_time = current_time;
     if (current == thread) current = NULL;
@@ -1366,6 +1369,7 @@ DECL_HANDLER(terminate_thread)
         if (thread != current) kill_thread( thread, 1 );
         else
         {
+            dispatch_terminate_thread_event( thread );
             reply->self = 1;
             reply->last = (thread->process->running_threads == 1);
         }

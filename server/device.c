@@ -922,6 +922,7 @@ void dispatch_create_thread_event( struct thread *thread )
 
 
 /* dispatch a destroy-thread event to kernel environments */
+/* we can't query information later, so send it both PID and TID*/
 void dispatch_terminate_thread_event( struct thread *thread )
 {
     struct device_manager *cur_manager;
@@ -934,7 +935,7 @@ void dispatch_terminate_thread_event( struct thread *thread )
         event_apc.user.func = cur_manager->event_handler;
         event_apc.user.args[0] = EVENT_TYPE_THREAD_TERMINATE;
         event_apc.user.args[1] = thread->id;
-        event_apc.user.args[2] = 0;
+        event_apc.user.args[2] = thread->process->id;
 
         thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
     }
