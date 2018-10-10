@@ -45,6 +45,7 @@
 #include "winternl.h"
 
 #include "file.h"
+#include "device.h"
 #include "handle.h"
 #include "process.h"
 #include "thread.h"
@@ -1272,6 +1273,7 @@ DECL_HANDLER(init_thread)
 {
     struct process *process = current->process;
     int wait_fd, reply_fd;
+    int first;
 
     if ((reply_fd = thread_get_inflight_fd( current, req->reply_fd )) == -1)
     {
@@ -1309,6 +1311,7 @@ DECL_HANDLER(init_thread)
 
     if (!process->peb)  /* first thread, initialize the process too */
     {
+        first = 1;
         if (!is_cpu_supported( req->cpu )) return;
         process->unix_pid = current->unix_pid;
         process->peb      = req->entry;
@@ -1321,6 +1324,7 @@ DECL_HANDLER(init_thread)
     }
     else
     {
+        first = 0;
         if (req->cpu != process->cpu)
         {
             set_error( STATUS_INVALID_PARAMETER );
@@ -1333,6 +1337,8 @@ DECL_HANDLER(init_thread)
         set_thread_affinity( current, current->affinity );
     }
     debug_level = max( debug_level, req->debug_level );
+
+    if(!first) dispatch_create_thread_event( current );
 
     reply->pid     = get_process_id( process );
     reply->tid     = get_thread_id( current );

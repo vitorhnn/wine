@@ -4582,6 +4582,12 @@ static void dump_terminate_job_request( const struct terminate_job_request *req 
     fprintf( stderr, ", status=%d", req->status );
 }
 
+static void dump_reg_device_event_handler_request( const struct reg_device_event_handler_request *req )
+{
+    fprintf( stderr, " manager=%04x", req->manager );
+    dump_uint64( ", event_handler=", &req->event_handler );
+}
+
 static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_new_process_request,
     (dump_func)dump_get_new_process_info_request,
@@ -4877,6 +4883,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_job_limits_request,
     (dump_func)dump_set_job_completion_port_request,
     (dump_func)dump_terminate_job_request,
+    (dump_func)dump_reg_device_event_handler_request,
 };
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
@@ -5169,6 +5176,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     (dump_func)dump_create_job_reply,
     (dump_func)dump_open_job_reply,
+    NULL,
     NULL,
     NULL,
     NULL,
@@ -5471,6 +5479,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_job_limits",
     "set_job_completion_port",
     "terminate_job",
+    "reg_device_event_handler",
 };
 
 static const struct

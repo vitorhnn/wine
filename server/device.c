@@ -37,6 +37,7 @@
 #include "file.h"
 #include "handle.h"
 #include "request.h"
+#include "thread.h"
 #include "process.h"
 
 static struct list manager_list = LIST_INIT(manager_list);
@@ -90,6 +91,8 @@ struct device_manager
     struct list            drivers;       /* list of drivers */
     struct list            devices;       /* list of devices */
     struct list            requests;      /* list of pending irps across all devices */
+    struct thread          *handler_thread;
+    client_ptr_t           event_handler;
     struct list            global_entry;  /* entry in global manager list*/
 };
 
@@ -641,6 +644,8 @@ static struct device_manager *create_device_manager(void)
         list_init( &manager->drivers );
         list_init( &manager->devices );
         list_init( &manager->requests );
+        manager->event_handler = NULL;
+        manager->handler_thread = NULL;
 
         list_add_tail( &manager_list, &manager->global_entry);
     }
@@ -833,13 +838,142 @@ DECL_HANDLER(enum_drivers)
 /* provide information about loaded driver */
 DECL_HANDLER( get_driver_info )
 {
+    struct driver *driver;
+
     if(!req->driver)
     {
         set_error( STATUS_INVALID_PARAMETER );
         return;
     }
 
-    struct driver *driver = (struct driver*)req->driver;
+    driver = (struct driver*)req->driver;
 
     set_reply_data( driver->path, min( driver->path_len, get_reply_max_size() ) );
+}
+
+
+/* Driver event notification management */
+
+
+/* dispatch a create-process event to kernel environments */
+void dispatch_create_process_event( struct process *process )
+{
+    struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t event_apc;
+
+        /*process_handle = alloc_handle(cur_manager->handler_thread->process, process, PROCESS_QUERY_INFORMATION, 0);*/
+
+        event_apc.type = APC_USER;
+        event_apc.user.func = cur_manager->event_handler;
+        event_apc.user.args[0] = EVENT_TYPE_PROCESS_CREATE;
+        event_apc.user.args[1] = process->id;
+        event_apc.user.args[2] = 0;
+
+        thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
+    }
+}
+
+
+/* dispatch a destroy-process event to kernel environments */
+void dispatch_terminate_process_event( struct process * process)
+{
+    struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t event_apc;
+
+        /*process_handle = alloc_handle(cur_manager->handler_thread->process, process, PROCESS_QUERY_INFORMATION, 0);*/
+
+        event_apc.type = APC_USER;
+        event_apc.user.func = cur_manager->event_handler;
+        event_apc.user.args[0] = EVENT_TYPE_PROCESS_TERMINATE;
+        event_apc.user.args[1] = process->id;
+        event_apc.user.args[2] = 0;
+
+        thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
+    }
+}
+
+
+/* dispatch a create-thread event to kernel environments */
+void dispatch_create_thread_event( struct thread *thread )
+{
+    struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t event_apc;
+
+        if(!cur_manager->handler_thread && !cur_manager->event_handler) continue;
+
+        event_apc.type = APC_USER;
+        event_apc.user.func = cur_manager->event_handler;
+        event_apc.user.args[0] = EVENT_TYPE_THREAD_CREATE;
+        event_apc.user.args[1] = thread->id;
+        event_apc.user.args[2] = 0;
+        
+        thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
+    }
+}
+
+
+/* dispatch a destroy-thread event to kernel environments */
+void dispatch_terminate_thread_event( struct thread *thread )
+{
+    struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t event_apc;
+
+        event_apc.type = APC_USER;
+        event_apc.user.func = cur_manager->event_handler;
+        event_apc.user.args[0] = EVENT_TYPE_THREAD_TERMINATE;
+        event_apc.user.args[1] = thread->id;
+        event_apc.user.args[2] = 0;
+
+        thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
+    }
+}
+
+
+/* dispatch a load-image event to kernel environments */
+void dispatch_load_image_event( struct process *process, mod_handle_t base )
+{
+        struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY( cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t event_apc;
+        obj_handle_t process_handle;
+
+        /*process_handle = alloc_handle(cur_manager->handler_thread->process, process, PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0);*/
+
+        event_apc.type = APC_USER;
+        event_apc.user.func = cur_manager->event_handler;
+        event_apc.user.args[0] = EVENT_TYPE_LOAD_IMAGE;
+        event_apc.user.args[1] = process->id;
+        event_apc.user.args[2] = base;
+
+        thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
+    }
+}
+
+/* register the ntoskrnl event handler */
+DECL_HANDLER( reg_device_event_handler )
+{
+    struct device_manager *manager;
+
+    if (!(manager = (struct device_manager *)get_handle_obj( current->process, req->manager,
+                                                             0, &device_manager_ops )))
+        return;
+    
+    manager->event_handler = req->event_handler;
+    manager->handler_thread = current;
+
+    release_object(manager);
 }

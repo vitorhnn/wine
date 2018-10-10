@@ -42,6 +42,7 @@
 #include "winternl.h"
 
 #include "file.h"
+#include "device.h"
 #include "handle.h"
 #include "process.h"
 #include "thread.h"
@@ -759,6 +760,9 @@ static struct process_dll *process_load_dll( struct process *process, mod_handle
         }
         list_add_tail( &process->dlls, &dll->entry );
     }
+
+    dispatch_load_image_event( process, base );
+
     return dll;
 }
 
@@ -781,6 +785,8 @@ static void process_unload_dll( struct process *process, mod_handle_t base )
 static void terminate_process( struct process *process, struct thread *skip, int exit_code )
 {
     struct thread *thread;
+
+    dispatch_terminate_process_event( process );
 
     grab_object( process );  /* make sure it doesn't get freed when threads die */
     process->is_terminating = 1;
@@ -1320,6 +1326,10 @@ DECL_HANDLER(init_process_done)
 
     if (req->gui) process->idle_event = create_event( NULL, NULL, 0, 1, 0, NULL );
     if (process->debugger) set_process_debug_flag( process, 1 );
+
+    dispatch_create_process_event( process );
+    dispatch_create_thread_event( current );
+
     reply->suspend = (current->suspend || process->suspend);
 }
 

@@ -715,6 +715,15 @@ struct rawinput_device
     user_handle_t  target;
 };
 
+enum event_type
+{
+    EVENT_TYPE_PROCESS_CREATE,
+    EVENT_TYPE_PROCESS_TERMINATE,
+    EVENT_TYPE_THREAD_CREATE,
+    EVENT_TYPE_THREAD_TERMINATE,
+    EVENT_TYPE_LOAD_IMAGE
+};
+
 
 
 
@@ -5705,6 +5714,19 @@ struct terminate_job_reply
 };
 
 
+
+struct reg_device_event_handler_request
+{
+    struct request_header __header;
+    obj_handle_t manager;
+    client_ptr_t event_handler;
+};
+struct reg_device_event_handler_reply
+{
+    struct reply_header __header;
+};
+
+
 enum request
 {
     REQ_new_process,
@@ -6001,6 +6023,7 @@ enum request
     REQ_set_job_limits,
     REQ_set_job_completion_port,
     REQ_terminate_job,
+    REQ_reg_device_event_handler,
     REQ_NB_REQUESTS
 };
 
@@ -6302,6 +6325,7 @@ union generic_request
     struct set_job_limits_request set_job_limits_request;
     struct set_job_completion_port_request set_job_completion_port_request;
     struct terminate_job_request terminate_job_request;
+    struct reg_device_event_handler_request reg_device_event_handler_request;
 };
 union generic_reply
 {
@@ -6601,8 +6625,9 @@ union generic_reply
     struct set_job_limits_reply set_job_limits_reply;
     struct set_job_completion_port_reply set_job_completion_port_reply;
     struct terminate_job_reply terminate_job_reply;
+    struct reg_device_event_handler_reply reg_device_event_handler_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 564
+#define SERVER_PROTOCOL_VERSION 569
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

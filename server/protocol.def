@@ -731,6 +731,15 @@ struct rawinput_device
     user_handle_t  target;
 };
 
+enum event_type
+{
+    EVENT_TYPE_PROCESS_CREATE,
+    EVENT_TYPE_PROCESS_TERMINATE,
+    EVENT_TYPE_THREAD_CREATE,
+    EVENT_TYPE_THREAD_TERMINATE,
+    EVENT_TYPE_LOAD_IMAGE
+};
+
 /****************************************************************/
 /* Request declarations */
 
@@ -3885,4 +3894,11 @@ struct handle_info
 @REQ(terminate_job)
     obj_handle_t handle;          /* handle to the job */
     int          status;          /* process exit code */
+@END
+
+
+/* Each winedevice has an event handler for global events */
+@REQ(reg_device_event_handler)
+    obj_handle_t manager;
+    client_ptr_t event_handler;
 @END

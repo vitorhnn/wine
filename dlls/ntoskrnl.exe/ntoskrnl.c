@@ -660,6 +660,71 @@ static void unload_driver( struct wine_rb_entry *entry, void *context )
     CloseServiceHandle( (void *)service_handle );
 }
 
+static void CALLBACK handle_event( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
+{
+    enum event_type type = (enum event_type) arg1;
+
+    switch( type )
+    {
+        case EVENT_TYPE_PROCESS_CREATE:
+            {
+                TRACE("Create-Process Event\n");
+            }
+            break;
+        case EVENT_TYPE_PROCESS_TERMINATE:
+            {
+                TRACE("Terminate-Process Event\n");
+            }
+            break;
+        case EVENT_TYPE_THREAD_CREATE:
+            {
+                TRACE("Create-Thread Event\n");
+            }
+            break;
+        case EVENT_TYPE_THREAD_TERMINATE:
+            {
+                TRACE("Terminate-Thread Event\n");
+            }
+            break;
+        case EVENT_TYPE_LOAD_IMAGE:
+            {
+                TRACE("Load-Image Event\n");
+            }
+            break;
+        default:
+            FIXME("Unhandled event type %p\n", arg1);
+    }
+}
+
+static void CDECL wine_device_event_handler_thread( HANDLE stop_event )
+{
+    NTSTATUS stat;
+
+    SERVER_START_REQ( reg_device_event_handler )
+    {
+        req->manager = get_device_manager();
+        req->event_handler = handle_event;
+        stat = wine_server_call( req );
+    }
+    SERVER_END_REQ;
+
+    if(stat)
+    {
+        FIXME("Failed to register event handler: %p\n", stat);
+        return;
+    }
+
+    for(;;)
+    {
+        stat = WaitForSingleObjectEx(stop_event, INFINITE, TRUE);
+        if(!stat)
+            return;
+        if(stat == WAIT_IO_COMPLETION)
+            continue;
+        return;
+    }
+}
+
 /***********************************************************************
  *           wine_ntoskrnl_main_loop   (Not a Windows API)
  */
@@ -686,6 +751,8 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
     PsProcessType->Name = ProcessTypeUS;
 
     request_thread = GetCurrentThreadId();
+
+    RtlCreateUserThread(GetCurrentProcess(), 0, FALSE, 0, NULL, NULL, wine_device_event_handler_thread, stop_event, NULL, NULL);
 
     handles[0] = stop_event;
     handles[1] = manager;
