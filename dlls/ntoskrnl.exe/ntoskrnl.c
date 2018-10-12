@@ -642,7 +642,7 @@ static void unload_driver( struct wine_rb_entry *entry, void *context )
 
     SERVER_START_REQ(remove_driver)
     {
-        req->driver = wine_server_obj_handle(driver->server_driver);
+        req->driver = wine_server_client_ptr(driver->server_driver);
         wine_server_call( req );
     }
     SERVER_END_REQ;
