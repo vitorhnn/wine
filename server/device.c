@@ -870,7 +870,7 @@ void dispatch_create_process_event( struct process *process )
         event_apc.user.func = cur_manager->event_handler;
         event_apc.user.args[0] = EVENT_TYPE_PROCESS_CREATE;
         event_apc.user.args[1] = process->id;
-        event_apc.user.args[2] = 0;
+        event_apc.user.args[2] = process->parent_thread_id;
 
         thread_queue_apc(NULL, cur_manager->handler_thread, NULL, &event_apc);
     }

@@ -642,7 +642,7 @@ static void unload_driver( struct wine_rb_entry *entry, void *context )
 
     SERVER_START_REQ(remove_driver)
     {
-        req->driver = driver->server_driver;
+        req->driver = wine_server_obj_handle(driver->server_driver);
         wine_server_call( req );
     }
     SERVER_END_REQ;
@@ -660,6 +660,65 @@ static void unload_driver( struct wine_rb_entry *entry, void *context )
     CloseServiceHandle( (void *)service_handle );
 }
 
+
+
+static PEPROCESS get_or_create_process_object(DWORD pid)
+{
+    PEPROCESS new_object;
+    struct process_object_container *container;
+    PROCESS_BASIC_INFORMATION pbi;
+    NTSTATUS status;
+    
+    /* see if we already have the object */
+    LIST_FOR_EACH_ENTRY( container, &process_objects, struct process_object_container, entry )
+    {
+        if(container->object->Pid == pid)
+            return container->object;
+    }
+    
+    /* not found, create object */
+    new_object = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x04D0);
+    new_object->header.Type = ProcessObject;
+    new_object->header.Size = 0x18;
+    new_object->header.SignalState = 1;
+    
+    new_object->Pid = pid;
+    
+    new_object->PebAddress = 0; /* Fallback if we fail to query */
+
+    /* Get a handle with necessary permissions */
+    new_object->ProcessHandle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, FALSE, pid);
+
+    /* store in PEB so signal handler can access */
+    NtCurrentTeb()->Peb->Reserved[0] = (ULONG) (ULONGLONG) new_object->ProcessHandle;
+
+
+    status = NtQueryInformationProcess(new_object->ProcessHandle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
+
+    if(status) 
+        FIXME("Unable to get PEB address from process %u\n", pid);
+    else
+        new_object->PebAddress = pbi.PebBaseAddress;
+    
+    /* create container */
+    container = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(*container));
+    container->object = new_object;
+    
+    list_add_head( &process_objects, &container->entry );
+    
+    return new_object;
+}
+
+struct routine_entry
+{
+    struct list entry;
+    void        *routine;
+};
+
+static struct list process_create_ex_routines = LIST_INIT( process_create_ex_routines );
+static struct list thread_create_routines = LIST_INIT( thread_create_routines );
+static struct list load_image_routines = LIST_INIT( load_image_routines );
+
 static void CALLBACK handle_event( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3 )
 {
     enum event_type type = (enum event_type) arg1;
@@ -668,31 +727,158 @@ static void CALLBACK handle_event( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg
     {
         case EVENT_TYPE_PROCESS_CREATE:
             {
+                PEPROCESS process_object;
+                HANDLE pid;
+                PS_CREATE_NOTIFY_INFO create_info;
+                  CLIENT_ID creating_thread_info;
+                    HANDLE creating_thread;
+                  PEB process_peb;
+                  RTL_USER_PROCESS_PARAMETERS process_params;
+                  WCHAR dos_path[MAX_PATH];
+                  UNICODE_STRING nt_path;
+                  PWCHAR command_line;
+                  UNICODE_STRING command_line_us;
+                  
+
+                PROCESS_BASIC_INFORMATION pbi;
+                NTSTATUS stat;
+                SIZE_T out_size;
+
+                struct routine_entry *cur_routine;
+
                 TRACE("Create-Process Event\n");
+		        /*if(list_empty( &process_create_ex_routines )) return;*/
+
+                pid = (HANDLE) arg2;
+                process_object = get_or_create_process_object( (DWORD) (ULONGLONG) pid );
+
+                create_info.Size = sizeof(PS_CREATE_NOTIFY_INFO);
+                create_info.DUMMYUNIONNAME.Flags = 0; /* Unknown */
+                create_info.DUMMYUNIONNAME.DUMMYSTRUCTNAME.FileOpenNameAvailable = TRUE;
+                create_info.DUMMYUNIONNAME.DUMMYSTRUCTNAME.IsSubsystemProcess = FALSE;
+
+                /* get PBI */
+                if( (stat = NtQueryInformationProcess(process_object->ProcessHandle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL)) )
+                {
+                    FIXME("Unable to get PBI for Create-Process Event: %p\n", (PVOID) (ULONGLONG) stat);
+                    return;
+                }
+
+                create_info.ParentProcessId = (HANDLE) pbi.InheritedFromUniqueProcessId;
+                
+                creating_thread_info.UniqueThread = (HANDLE) arg3;
+                creating_thread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, (DWORD) (ULONGLONG) arg3);
+                creating_thread_info.UniqueProcess = (HANDLE) (ULONGLONG) GetProcessIdOfThread(creating_thread);
+                CloseHandle(creating_thread);
+
+                create_info.CreatingThreadId = creating_thread_info;
+
+                create_info.FileObject = (PFILE_OBJECT) 0xdeadbeefdeadbeef; /* TODO: fix */
+
+                /* navigate PEB for CommandLine */
+                if( (!ReadProcessMemory(process_object->ProcessHandle, process_object->PebAddress, &process_peb, sizeof(PEB), &out_size)) || out_size != sizeof(PEB) )
+                {
+                    FIXME("Unable to read PEB of process in process-creation notification\n");
+                    return;
+                }
+
+                if( (!ReadProcessMemory(process_object->ProcessHandle, process_peb.ProcessParameters, &process_params, sizeof(RTL_USER_PROCESS_PARAMETERS), &out_size)) || out_size != sizeof(RTL_USER_PROCESS_PARAMETERS))
+                {
+                    FIXME("Unable to read process paramaters on process in creation notification\n");
+                    return;
+                }
+
+                if( (!ReadProcessMemory(process_object->ProcessHandle, process_params.ImagePathName.Buffer, dos_path, process_params.ImagePathName.Length, &out_size)) || out_size != process_params.ImagePathName.Length)
+                {
+                    FIXME("Unable to read Image Path Name in creation notification\n");
+                    return;
+                }
+
+                command_line = HeapAlloc( GetProcessHeap(), 0, process_params.CommandLine.Length);
+
+                if( (!ReadProcessMemory(process_object->ProcessHandle, process_params.CommandLine.Buffer, command_line, process_params.CommandLine.Length, &out_size)) || out_size != process_params.CommandLine.Length)
+                {
+                    FIXME("Unable to read Command-Line in creation notification\n");
+                    HeapFree( GetProcessHeap(), 0, command_line );
+                    return;
+                }
+
+                if( (stat = RtlDosPathNameToNtPathName_U_WithStatus(dos_path, &nt_path, NULL, NULL)) )
+                {
+                    FIXME("Unable to convert process path to NT format for notification: %p\n", (PVOID) (ULONGLONG) stat);
+                    HeapFree( GetProcessHeap(), 0, command_line);
+                    return;
+                }
+
+                create_info.ImageFileName = &nt_path;
+
+                RtlCreateUnicodeString(&command_line_us, command_line);
+                create_info.CommandLine = &command_line_us;
+
+                create_info.CreationStatus = STATUS_SUCCESS;
+
+                /* dispatch here */
+                TRACE("parent=%u create_proc=%u create_thread=%u path=%s cmd=%s\n", (ULONG)(ULONGLONG)create_info.ParentProcessId, (ULONG)(ULONGLONG)create_info.CreatingThreadId.UniqueProcess, (ULONG)(ULONGLONG)create_info.CreatingThreadId.UniqueThread, debugstr_us(create_info.ImageFileName), debugstr_us(create_info.CommandLine) );
+                LIST_FOR_EACH_ENTRY( cur_routine, &process_create_ex_routines, struct routine_entry, entry )
+                {
+                    PCREATE_PROCESS_NOTIFY_ROUTINE_EX routine = (PCREATE_PROCESS_NOTIFY_ROUTINE_EX) cur_routine->routine;
+                    
+                    routine(process_object, pid, &create_info);
+                }
+                /* end dispatch here */
+
+                if(create_info.CreationStatus)
+                {
+                    FIXME("Process Creation calback requested that the creation fail with code: %p\n", (PVOID) (ULONGLONG) create_info.CreationStatus );
+                }
+
+                HeapFree( GetProcessHeap(), 0, command_line );
+                RtlFreeUnicodeString( (PUNICODE_STRING)create_info.ImageFileName );
+                RtlFreeUnicodeString( (PUNICODE_STRING)create_info.CommandLine );
+
             }
             break;
         case EVENT_TYPE_PROCESS_TERMINATE:
             {
-                TRACE("Terminate-Process Event\n");
+                DWORD pid;
+                PEPROCESS process_object;
+
+                struct routine_entry *cur_routine;
+
+                pid = (DWORD)(ULONGLONG)arg2;
+		        process_object = get_or_create_process_object( pid );
+
+                TRACE("Terminate-Process Event pid=%u\n", pid);
+
+                LIST_FOR_EACH_ENTRY( cur_routine, &process_create_ex_routines, struct routine_entry, entry )
+                {
+                    PCREATE_PROCESS_NOTIFY_ROUTINE_EX routine = (PCREATE_PROCESS_NOTIFY_ROUTINE_EX) cur_routine->routine;
+                    
+                    routine(process_object, (HANDLE) arg2, NULL);
+                }
+
             }
             break;
-        case EVENT_TYPE_THREAD_CREATE:
+                case EVENT_TYPE_THREAD_CREATE:
             {
                 TRACE("Create-Thread Event\n");
+		        if(list_empty( &thread_create_routines )) return;
             }
             break;
-        case EVENT_TYPE_THREAD_TERMINATE:
+                case EVENT_TYPE_THREAD_TERMINATE:
             {
                 TRACE("Terminate-Thread Event\n");
+		        if(list_empty( &thread_create_routines )) return;
             }
             break;
         case EVENT_TYPE_LOAD_IMAGE:
             {
                 TRACE("Load-Image Event\n");
+		        if(list_empty( &load_image_routines )) return;
             }
             break;
         default:
-            FIXME("Unhandled event type %p\n", arg1);
+            FIXME("Unhandled event type %p\n", (PVOID) arg1);
     }
 }
 
@@ -702,15 +888,15 @@ static void CDECL wine_device_event_handler_thread( HANDLE stop_event )
 
     SERVER_START_REQ( reg_device_event_handler )
     {
-        req->manager = get_device_manager();
-        req->event_handler = handle_event;
+        req->manager = wine_server_obj_handle( get_device_manager() );
+        req->event_handler = wine_server_client_ptr( handle_event );
         stat = wine_server_call( req );
     }
     SERVER_END_REQ;
 
     if(stat)
     {
-        FIXME("Failed to register event handler: %p\n", stat);
+        FIXME("Failed to register event handler: %p\n", (PVOID) (ULONGLONG) stat);
         return;
     }
 
@@ -752,7 +938,7 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
 
     request_thread = GetCurrentThreadId();
 
-    RtlCreateUserThread(GetCurrentProcess(), 0, FALSE, 0, NULL, NULL, wine_device_event_handler_thread, stop_event, NULL, NULL);
+    RtlCreateUserThread(GetCurrentProcess(), 0, FALSE, 0, 0, 0, wine_device_event_handler_thread, stop_event, NULL, NULL);
 
     handles[0] = stop_event;
     handles[1] = manager;
@@ -2163,53 +2349,6 @@ NTSTATUS WINAPI FsRtlRegisterUncProvider(PHANDLE MupHandle, PUNICODE_STRING Redi
     return STATUS_NOT_IMPLEMENTED;
 }
 
-static PEPROCESS get_or_create_process_object(DWORD pid)
-{
-    PEPROCESS new_object;
-    struct process_object_container *container;
-    PROCESS_BASIC_INFORMATION pbi;
-    NTSTATUS status;
-    
-    /* see if we already have the object */
-    LIST_FOR_EACH_ENTRY( container, &process_objects, struct process_object_container, entry )
-    {
-        if(container->object->Pid == pid)
-            return container->object;
-    }
-    
-    /* not found, create object */
-    new_object = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, 0x04D0);
-    new_object->header.Type = ProcessObject;
-    new_object->header.Size = 0x18;
-    new_object->header.SignalState = 1;
-    
-    new_object->Pid = pid;
-    
-    new_object->PebAddress = 0; /* Fallback if we fail to query */
-
-    /* Get a handle with necessary permissions */
-    new_object->ProcessHandle = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, FALSE, pid);
-
-    /* store in PEB so signal handler can access */
-    NtCurrentTeb()->Peb->Reserved[0] = (ULONG) new_object->ProcessHandle;
-
-
-    status = NtQueryInformationProcess(new_object->ProcessHandle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL);
-
-    if(status) 
-        FIXME("Unable to get PEB address from process %u\n", pid);
-    else
-        new_object->PebAddress = pbi.PebBaseAddress;
-    
-    /* create container */
-    container = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(*container));
-    container->object = new_object;
-    
-    list_add_head( &process_objects, &container->entry );
-    
-    return new_object;
-}
-
 /***********************************************************************
  *           IoGetCurrentProcess / PsGetCurrentProcess   (NTOSKRNL.EXE.@)
  */
@@ -2875,8 +3014,11 @@ NTSTATUS WINAPI ObReferenceObjectByHandle( HANDLE obj, ACCESS_MASK access,
     stat = NtQueryInformationThread(obj, ThreadBasicInformation, &tbi, sizeof(tbi), NULL);
     if(!stat)
     {
+        PTEB thread_teb;
+
         TRACE("setting to object to the PKTHREAD\n");
-        PTEB thread_teb = (PTEB)tbi.TebBaseAddress;
+
+        thread_teb = (PTEB)tbi.TebBaseAddress;
         if(!thread_teb->Spare4)
             init_kthread(thread_teb);
         object = thread_teb->Spare4;
@@ -3143,7 +3285,33 @@ NTSTATUS WINAPI PsSetCreateProcessNotifyRoutine( PCREATE_PROCESS_NOTIFY_ROUTINE 
  */
 NTSTATUS WINAPI PsSetCreateProcessNotifyRoutineEx( PCREATE_PROCESS_NOTIFY_ROUTINE_EX callback, BOOLEAN remove )
 {
-    FIXME( "stub: %p %d\n", callback, remove );
+    /* TODO: make threadsafe */
+    TRACE( ": %p %d\n", callback, remove );
+
+    if(!remove)
+    {
+        struct routine_entry* new_routine = HeapAlloc( GetProcessHeap(), 0, sizeof(*new_routine) );
+
+        new_routine->routine = (void *) callback;
+
+        /* TODO: check whether routine already registered*/
+        list_add_tail( &process_create_ex_routines, &new_routine->entry);
+    }else{
+        struct routine_entry *cur_routine;
+
+        LIST_FOR_EACH_ENTRY( cur_routine, &process_create_ex_routines, struct routine_entry, entry )
+        {
+            if(cur_routine->routine == (void *) callback)
+            {
+                list_remove(&cur_routine->entry);
+                HeapFree( GetProcessHeap(), 0, cur_routine);
+                return STATUS_SUCCESS;
+            }
+        }
+
+        return STATUS_SUCCESS;
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -3856,6 +4024,7 @@ NTSTATUS WINAPI ZwLoadDriver( const UNICODE_STRING *service_name )
     struct wine_rb_entry *entry;
     struct wine_driver *driver;
     UNICODE_STRING drv_name;
+    PUNICODE_STRING driver_path;
     NTSTATUS status;
     HANDLE manager = get_device_manager();
 
@@ -3884,12 +4053,12 @@ NTSTATUS WINAPI ZwLoadDriver( const UNICODE_STRING *service_name )
     driver = WINE_RB_ENTRY_VALUE( entry, struct wine_driver, entry );
     driver->service_handle = service_handle;
 
-    UNICODE_STRING *driver_path =  &((LDR_MODULE *)(driver->driver_obj.DriverSection))->FullDllName;
+    driver_path =  &((LDR_MODULE *)(driver->driver_obj.DriverSection))->FullDllName;
     SERVER_START_REQ( add_driver )
     {
         req->manager = wine_server_obj_handle( manager );
         if(driver_path) wine_server_add_data( req, driver_path->Buffer, driver_path->Length );
-        if (!(status = wine_server_call( req ))) driver->server_driver = reply->driver;
+        if (!(status = wine_server_call( req ))) driver->server_driver = wine_server_get_ptr( reply->driver );
     }
     SERVER_END_REQ;
 
@@ -4377,7 +4546,7 @@ void WINAPI ExfUnblockPushLock( EX_PUSH_LOCK *lock, PEX_PUSH_LOCK_WAIT_BLOCK blo
 HANDLE WINAPI PsGetProcessId(PEPROCESS process)
 {
     if(MmIsAddressValid(process))
-        return process->Pid;
+        return (HANDLE)(ULONGLONG)process->Pid;
     else return NULL;
 }
 

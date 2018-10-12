@@ -508,6 +508,7 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
         goto error;
     }
     process->parent_id       = 0;
+    process->parent_thread_id= 0;
     process->debugger        = NULL;
     process->handles         = NULL;
     process->msg_fd          = NULL;
@@ -563,6 +564,7 @@ struct thread *create_process( int fd, struct thread *parent_thread, int inherit
     {
         struct process *parent = parent_thread->process;
         process->parent_id = parent->id;
+        process->parent_thread_id = parent_thread->id;
         process->handles = inherit_all ? copy_handle_table( process, parent )
                                        : alloc_handle_table( process, 0 );
         /* Note: for security reasons, starting a new process does not attempt
