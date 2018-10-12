@@ -859,16 +859,32 @@ static void CALLBACK handle_event( ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg
 
             }
             break;
-                case EVENT_TYPE_THREAD_CREATE:
+        case EVENT_TYPE_THREAD_CREATE:
             {
-                TRACE("Create-Thread Event\n");
-		        if(list_empty( &thread_create_routines )) return;
+                struct routine_entry *cur_routine;
+
+                TRACE("Create-Thread Event tid=%u\n", (DWORD)(ULONGLONG)arg2);
+		        
+                LIST_FOR_EACH_ENTRY( cur_routine, &thread_create_routines, struct routine_entry, entry )
+                {
+                    PCREATE_THREAD_NOTIFY_ROUTINE routine = (PCREATE_THREAD_NOTIFY_ROUTINE) cur_routine->routine;
+
+                    routine((HANDLE)arg3, (HANDLE)arg2, TRUE);
+                }
             }
             break;
-                case EVENT_TYPE_THREAD_TERMINATE:
+        case EVENT_TYPE_THREAD_TERMINATE:
             {
-                TRACE("Terminate-Thread Event\n");
-		        if(list_empty( &thread_create_routines )) return;
+                struct routine_entry *cur_routine;
+
+                TRACE("Terminate-Thread Event tid=%u\n", (DWORD)(ULONGLONG)arg2);
+		        
+                LIST_FOR_EACH_ENTRY( cur_routine, &thread_create_routines, struct routine_entry, entry )
+                {
+                    PCREATE_THREAD_NOTIFY_ROUTINE routine = (PCREATE_THREAD_NOTIFY_ROUTINE) cur_routine->routine;
+
+                    routine((HANDLE)arg3, (HANDLE)arg2, FALSE);
+                }
             }
             break;
         case EVENT_TYPE_LOAD_IMAGE:
@@ -3321,7 +3337,16 @@ NTSTATUS WINAPI PsSetCreateProcessNotifyRoutineEx( PCREATE_PROCESS_NOTIFY_ROUTIN
  */
 NTSTATUS WINAPI PsSetCreateThreadNotifyRoutine( PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine )
 {
-    FIXME( "stub: %p\n", NotifyRoutine );
+    struct routine_entry *new_routine;
+
+    TRACE( ": %p\n", NotifyRoutine );
+
+    new_routine = HeapAlloc( GetProcessHeap(), 0, sizeof(*new_routine) );
+
+    new_routine->routine = (void *) NotifyRoutine;
+
+    list_add_tail( &thread_create_routines, &new_routine->entry );
+
     return STATUS_SUCCESS;
 }
 
@@ -3331,8 +3356,23 @@ NTSTATUS WINAPI PsSetCreateThreadNotifyRoutine( PCREATE_THREAD_NOTIFY_ROUTINE No
  */
 NTSTATUS WINAPI PsRemoveCreateThreadNotifyRoutine( PCREATE_THREAD_NOTIFY_ROUTINE NotifyRoutine )
 {
-    FIXME( "stub: %p\n", NotifyRoutine );
-    return STATUS_SUCCESS;
+    struct routine_entry *cur_routine;
+    
+    TRACE( ": %p\n", NotifyRoutine );
+
+    LIST_FOR_EACH_ENTRY( cur_routine, &thread_create_routines, struct routine_entry, entry )
+    {
+        if( (void *)cur_routine->routine == NotifyRoutine )
+        {
+            list_remove( &cur_routine->entry );
+
+            HeapFree( GetProcessHeap(), 0, cur_routine );
+
+            return STATUS_SUCCESS;
+        }
+    }
+
+    return STATUS_PROCEDURE_NOT_FOUND;
 }
 
 
