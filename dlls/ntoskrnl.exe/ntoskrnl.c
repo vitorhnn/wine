@@ -134,13 +134,22 @@ struct process_object_container
 static struct list process_objects = LIST_INIT( process_objects );
 
 static CRITICAL_SECTION drivers_cs;
-static CRITICAL_SECTION_DEBUG critsect_debug =
+static CRITICAL_SECTION_DEBUG driver_critsect_debug =
 {
     0, 0, &drivers_cs,
-    { &critsect_debug.ProcessLocksList, &critsect_debug.ProcessLocksList },
+    { &driver_critsect_debug.ProcessLocksList, &driver_critsect_debug.ProcessLocksList },
       0, 0, { (DWORD_PTR)(__FILE__ ": drivers_cs") }
 };
-static CRITICAL_SECTION drivers_cs = { &critsect_debug, -1, 0, 0, 0, 0 };
+static CRITICAL_SECTION drivers_cs = { &driver_critsect_debug, -1, 0, 0, 0, 0 };
+
+static CRITICAL_SECTION sync_cs;
+static CRITICAL_SECTION_DEBUG sync_critsect_debug =
+{
+    0, 0, &sync_cs,
+    { &sync_critsect_debug.ProcessLocksList, &sync_critsect_debug.ProcessLocksList },
+      0, 0, { (DWORD_PTR)(__FILE__ ": sync_cs") }
+};
+static CRITICAL_SECTION sync_cs = { &sync_critsect_debug, -1, 0, 0, 0, 0 };
 
 #ifdef __i386__
 #define DEFINE_FASTCALL1_ENTRYPOINT( name ) \
@@ -2761,20 +2770,24 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
         /* First check to make sure we need to wait */
         if(generic_object->Header.Type == MutantObject)
         {
+            EnterCriticalSection( &sync_cs );
 
             /* Mutex waits are different, as you can recursively obtain the mutex, so we must also check for ownership */
             if(mutex_object->Header.SignalState > 0 || mutex_object->OwnerThread == current_thread)
             {
                 TRACE("Acquiring mutex\n");
+
+                /* At this point we aren't waiting, we are acquiring the mutex, recursively or not*/
+                mutex_object->Header.SignalState--;
+
+                LeaveCriticalSection( &sync_cs );
+
                 /* Make sure that we haven't reached the acquirement limit */
                 if(mutex_object->Header.SignalState == (LONG)MINLONG)
                 {
                     TRACE("Recursive Mutex Acquirment max\n");
                     return STATUS_MUTANT_LIMIT_EXCEEDED;
                 }
-
-                /* At this point we aren't waiting, we are acquiring the mutex, recursively or not*/
-                mutex_object->Header.SignalState--;
 
                 /* Did we just now acquire it? */
                 if(!mutex_object->Header.SignalState)
@@ -2794,6 +2807,8 @@ NTSTATUS WINAPI KeWaitForSingleObject(PVOID Object,
                 }
 
                 return ret;
+            }else{
+                LeaveCriticalSection( &sync_cs );
             }
         }else if(generic_object->Header.SignalState > 0){
             TRACE("Waiting for non-mutex\n");
