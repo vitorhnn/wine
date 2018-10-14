@@ -21,6 +21,7 @@
 #include "wine/test.h"
 #include "winbase.h"
 #include "winioctl.h"
+#include "ntddstor.h"
 #include <stdio.h>
 #include "ddk/ntddcdvd.h"
 
@@ -588,6 +589,65 @@ static void test_disk_extents(void)
     ok(ret, "DeviceIoControl failed %u\n", GetLastError());
     ok(size == 32, "expected 32, got %u\n", size);
     CloseHandle( handle );
+}
+
+static void test_disk_properties(void)
+{
+    BOOL ret;
+    DWORD size;
+    HANDLE handle;
+    DWORD out_size;
+    STORAGE_DESCRIPTOR_HEADER descriptor_header = {0};
+    PBYTE out_buffer;
+    PSTORAGE_DEVICE_DESCRIPTOR device_descriptor;
+    DWORD serial_offset;
+    PCHAR serial;
+    SIZE_T serial_len;
+
+    handle = CreateFileA( "\\\\.\\PhysicalDrive0", 0, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+
+    STORAGE_PROPERTY_QUERY storagePropertyQuery;
+    ZeroMemory(&storagePropertyQuery, sizeof(STORAGE_PROPERTY_QUERY));
+
+    storagePropertyQuery.PropertyId = StorageDeviceProperty;
+    storagePropertyQuery.QueryType = PropertyStandardQuery;
+
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY,
+        &storagePropertyQuery, sizeof(STORAGE_PROPERTY_QUERY),
+        &descriptor_header, sizeof(STORAGE_DESCRIPTOR_HEADER),
+        &size, NULL);
+    
+    if(!ret && GetLastError() == ERROR_INVALID_FUNCTION)
+    {
+        win_skip("IOCTL_STORAGE_QUERY_PROPERTY not supported\n");
+        CloseHandle(handle);
+        return;
+    }
+
+    ok(ret, "DeviceIoControl failed %u\n", GetLastError());
+    
+    out_size = descriptor_header.Size;
+    out_buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, out_size);
+
+    ret = DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY,
+            &storagePropertyQuery, sizeof(STORAGE_PROPERTY_QUERY),
+            out_buffer, out_size,
+            &size, NULL);
+
+    ok(ret, "DeviceIoControl failed %u\n", GetLastError());
+
+    device_descriptor = (PSTORAGE_DEVICE_DESCRIPTOR)out_buffer;
+    serial_offset = device_descriptor->SerialNumberOffset;
+
+    serial = out_buffer + serial_offset;
+
+    serial_len = strlen(serial);
+
+    ok(serial_len >= 8 || serial_len <= 14, "Serial Number Invalid: %s\n", serial);
+
+    CloseHandle(handle);
+
+
 }
 
 static void test_GetVolumePathNameA(void)

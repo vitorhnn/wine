@@ -890,6 +890,84 @@ NTSTATUS query_dos_device( int letter, enum device_type *type, char **device, ch
     return status;
 }
 
+/* loosely based of reactOS drivers */
+static NTSTATUS query_device_property( void *buff, SIZE_T insize,
+                                       SIZE_T outsize, IO_STATUS_BLOCK *iosb,
+                                       struct disk_device *device )
+{
+    PSTORAGE_PROPERTY_QUERY property_query;
+    PSTORAGE_DEVICE_DESCRIPTOR descriptor;
+    PSTORAGE_DESCRIPTOR_HEADER header;
+    PCHAR serial_buffer;
+    SIZE_T out_length;
+    const char *serial = "JR10006P31HHLF";
+
+    /* sanity check */
+    if(insize < sizeof(STORAGE_PROPERTY_QUERY) || !buff)
+    {
+        FIXME("invalid property query, behavior may not be correct\n");
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    property_query = (PSTORAGE_PROPERTY_QUERY)buff;
+
+    if(property_query->PropertyId != StorageDeviceProperty)
+    {
+        /* we only support device property */
+        return STATUS_INVALID_PARAMETER_1;
+    }
+
+    if(property_query->QueryType == PropertyExistsQuery)
+    {
+        /* yes we support it */
+        return STATUS_SUCCESS;
+    }
+
+    if(property_query->QueryType != PropertyStandardQuery)
+    {
+        /* unknown QueryType */
+        return STATUS_INVALID_PARAMETER_2;
+    }
+
+    /* we have already established this is a StorageDeviceProperty request */
+    
+    out_length = sizeof(STORAGE_DEVICE_DESCRIPTOR) + strlen(serial) + 3;
+
+    if(outsize < out_length)
+    {
+        header = (PSTORAGE_DESCRIPTOR_HEADER) buff;
+
+        header->Version = out_length;
+        header->Size = out_length;
+
+        iosb->Information = sizeof(STORAGE_DESCRIPTOR_HEADER);
+
+        return STATUS_SUCCESS;
+    }
+
+    descriptor = (PSTORAGE_DEVICE_DESCRIPTOR)buff;
+
+    descriptor->Version = out_length;
+    descriptor->Size = out_length;
+    descriptor->DeviceType = 0;
+    descriptor->DeviceTypeModifier = 0;
+    descriptor->RemovableMedia = FALSE;
+    descriptor->CommandQueueing = FALSE;
+    descriptor->BusType = BusTypeAta;
+    descriptor->VendorIdOffset = 0;
+    descriptor->ProductIdOffset = 0;
+    descriptor->ProductRevisionOffset = 0;
+    descriptor->SerialNumberOffset = sizeof(STORAGE_DEVICE_DESCRIPTOR) - sizeof(UCHAR);
+    descriptor->RawPropertiesLength = strlen(serial) + 4;
+
+    serial_buffer = descriptor + sizeof(STORAGE_DEVICE_DESCRIPTOR) - sizeof(UCHAR);
+
+    strcpy(serial_buffer, serial);
+
+    iosb->Information = out_length;
+    return STATUS_SUCCESS;
+}
+
 /* handler for ioctls on the harddisk device */
 static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
 {
@@ -960,6 +1038,17 @@ static NTSTATUS WINAPI harddisk_ioctl( DEVICE_OBJECT *device, IRP *irp )
         memset( irp->AssociatedIrp.SystemBuffer, 0, len );
         irp->IoStatus.Information = len;
         irp->IoStatus.u.Status = STATUS_SUCCESS;
+        break;
+    }
+    case IOCTL_STORAGE_QUERY_PROPERTY:
+    {
+
+        irp->IoStatus.u.Status = query_device_property( irp->AssociatedIrp.SystemBuffer,
+                                                            irpsp->Parameters.DeviceIoControl.InputBufferLength,
+                                                            irpsp->Parameters.DeviceIoControl.OutputBufferLength,
+                                                            &irp->IoStatus,
+                                                            dev);
+
         break;
     }
     default:
