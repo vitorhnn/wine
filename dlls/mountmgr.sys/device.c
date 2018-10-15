@@ -205,11 +205,13 @@ static NTSTATUS create_disk_device( enum device_type type, struct disk_device **
     static const WCHAR ramdiskW[] = {'\\','D','e','v','i','c','e','\\','R','a','m','d','i','s','k','%','u',0};
     static const WCHAR cdromlinkW[] = {'\\','?','?','\\','C','d','R','o','m','%','u',0};
     static const WCHAR physdriveW[] = {'\\','?','?','\\','P','h','y','s','i','c','a','l','D','r','i','v','e','%','u',0};
+    static const WCHAR harddisk_dr[] = {'\\','D','e','v','i','c','e','\\','H','a','r','d','d','i','s','k','0','\\','D','R','%','u',0};
 
     UINT i, first = 0;
     NTSTATUS status = 0;
     const WCHAR *format = NULL;
     const WCHAR *link_format = NULL;
+    INT link_offset = 0;
     UNICODE_STRING name;
     DEVICE_OBJECT *dev_obj;
     struct disk_device *device;
@@ -224,7 +226,9 @@ static NTSTATUS create_disk_device( enum device_type type, struct disk_device **
         break;
     case DEVICE_HARDDISK_VOL:
         format = harddiskvolW;
+        link_format = harddisk_dr;
         first = 1;  /* harddisk volumes start counting from 1 */
+        link_offset = -1;
         break;
     case DEVICE_FLOPPY:
         format = floppyW;
@@ -265,7 +269,7 @@ static NTSTATUS create_disk_device( enum device_type type, struct disk_device **
             symlink.MaximumLength = (strlenW(link_format) + 10) * sizeof(WCHAR);
             if ((symlink.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, symlink.MaximumLength)))
             {
-                sprintfW( symlink.Buffer, link_format, i );
+                sprintfW( symlink.Buffer, link_format, (i + link_offset) );
                 symlink.Length = strlenW(symlink.Buffer) * sizeof(WCHAR);
                 if (!IoCreateSymbolicLink( &symlink, &name )) device->symlink = symlink;
             }
