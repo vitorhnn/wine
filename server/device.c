@@ -137,6 +137,7 @@ struct driver
 struct device
 {
     struct object          obj;           /* object header */
+    struct namespace      *entries;       /* device's name space */
     struct device_manager *manager;       /* manager for this device (or NULL if deleted) */
     char                  *unix_path;     /* path to unix device if any */
     client_ptr_t           user_ptr;      /* opaque ptr for client side */
@@ -150,7 +151,7 @@ static void device_destroy( struct object *obj );
 static struct object *device_open_file( struct object *obj, unsigned int access,
                                         unsigned int sharing, unsigned int options );
 
-static const struct object_ops device_ops =
+const struct object_ops device_ops =
 {
     sizeof(struct device),            /* size */
     device_dump,                      /* dump */
@@ -164,7 +165,7 @@ static const struct object_ops device_ops =
     default_fd_map_access,            /* map_access */
     default_get_sd,                   /* get_sd */
     default_set_sd,                   /* set_sd */
-    no_lookup_name,                   /* lookup_name */
+    directory_lookup_name,            /* lookup_name */
     directory_link_name,              /* link_name */
     default_unlink_name,              /* unlink_name */
     device_open_file,                 /* open_file */
@@ -556,6 +557,11 @@ static struct device *create_device( struct object *root, const struct unicode_s
     {
         if (get_error() != STATUS_OBJECT_NAME_EXISTS)
         {
+            if (!(device->entries = create_namespace( DIR_HASH_SIZE )))
+	        {
+                release_object( device );
+		        return NULL;
+	        }
             /* initialize it if it didn't already exist */
             device->unix_path = NULL;
             device->manager = manager;
@@ -574,6 +580,7 @@ struct object *create_unix_device( struct object *root, const struct unicode_str
     if ((device = create_named_object( root, &device_ops, name, 0, NULL )))
     {
         device->unix_path = strdup( unix_path );
+        device->entries = NULL;
         device->manager = NULL;  /* no manager, requests go straight to the Unix device */
         list_init( &device->files );
     }
@@ -605,6 +612,11 @@ static void delete_device( struct device *device )
 
     unlink_named_object( &device->obj );
     list_remove( &device->entry );
+    if (device->entries)
+    {
+        free( device->entries );
+	    device->entries = NULL;
+    }
     device->manager = NULL;
 }
 

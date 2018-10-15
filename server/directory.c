@@ -39,8 +39,6 @@
 #include "file.h"
 #include "unicode.h"
 
-#define HASH_SIZE 7  /* default hash size */
-
 struct object_type
 {
     struct object     obj;        /* object header */
@@ -80,8 +78,6 @@ struct directory
 
 static void directory_dump( struct object *obj, int verbose );
 static struct object_type *directory_get_type( struct object *obj );
-static struct object *directory_lookup_name( struct object *obj, struct unicode_str *name,
-                                             unsigned int attr );
 static void directory_destroy( struct object *obj );
 
 static const struct object_ops directory_ops =
@@ -109,6 +105,7 @@ static const struct object_ops directory_ops =
 static struct directory *root_directory;
 static struct directory *dir_objtype;
 
+extern const struct object_ops device_ops;
 
 static void object_type_dump( struct object *obj, int verbose )
 {
@@ -134,7 +131,7 @@ static struct object_type *directory_get_type( struct object *obj )
     return get_object_type( &str );
 }
 
-static struct object *directory_lookup_name( struct object *obj, struct unicode_str *name,
+struct object *directory_lookup_name( struct object *obj, struct unicode_str *name,
                                              unsigned int attr )
 {
     struct directory *dir = (struct directory *)obj;
@@ -142,7 +139,11 @@ static struct object *directory_lookup_name( struct object *obj, struct unicode_
     struct unicode_str tmp;
     const WCHAR *p;
 
-    assert( obj->ops == &directory_ops );
+    assert( obj->ops == &directory_ops || obj->ops == &device_ops );
+
+    /* Unix devices do not have directories */
+    if( dir->entries == NULL )
+        return no_lookup_name(obj, name, attr);
 
     if (!name) return NULL;  /* open the directory itself */
 
@@ -181,7 +182,7 @@ int directory_link_name( struct object *obj, struct object_name *name, struct ob
 {
     struct directory *dir = (struct directory *)parent;
 
-    if (parent->ops != &directory_ops)
+    if (parent->ops != &directory_ops && parent->ops != &device_ops)
     {
         set_error( STATUS_OBJECT_TYPE_MISMATCH );
         return 0;
@@ -279,9 +280,9 @@ static void create_session( unsigned int id )
 
     if (!id)
     {
-        dir_bno_global = create_directory( &root_directory->obj, &dir_bno_str, 0, HASH_SIZE, NULL );
-        dir_sessions   = create_directory( &root_directory->obj, &dir_sessions_str, 0, HASH_SIZE, NULL );
-        dir_bnolinks   = create_directory( &dir_sessions->obj, &dir_bnolinks_str, 0, HASH_SIZE, NULL );
+        dir_bno_global = create_directory( &root_directory->obj, &dir_bno_str, 0, DIR_HASH_SIZE, NULL );
+        dir_sessions   = create_directory( &root_directory->obj, &dir_sessions_str, 0, DIR_HASH_SIZE, NULL );
+        dir_bnolinks   = create_directory( &dir_sessions->obj, &dir_bnolinks_str, 0, DIR_HASH_SIZE, NULL );
         make_object_static( (struct object *)dir_bno_global );
         make_object_static( (struct object *)dir_bnolinks );
         make_object_static( (struct object *)dir_sessions );
@@ -290,14 +291,14 @@ static void create_session( unsigned int id )
     sprintfW( id_strW, fmt_u, id );
     id_str.str = id_strW;
     id_str.len = strlenW( id_strW ) * sizeof(WCHAR);
-    dir_id = create_directory( &dir_sessions->obj, &id_str, 0, HASH_SIZE, NULL );
-    dir_dosdevices = create_directory( &dir_id->obj, &dir_dosdevices_str, 0, HASH_SIZE, NULL );
+    dir_id = create_directory( &dir_sessions->obj, &id_str, 0, DIR_HASH_SIZE, NULL );
+    dir_dosdevices = create_directory( &dir_id->obj, &dir_dosdevices_str, 0, DIR_HASH_SIZE, NULL );
 
     /* for session 0, directories are created under the root */
     if (!id)
     {
         dir_bno      = (struct directory *)grab_object( dir_bno_global );
-        dir_windows  = create_directory( &root_directory->obj, &dir_windows_str, 0, HASH_SIZE, NULL );
+        dir_windows  = create_directory( &root_directory->obj, &dir_windows_str, 0, DIR_HASH_SIZE, NULL );
         link_bno     = create_obj_symlink( &dir_id->obj, &dir_bno_str, 0, &dir_bno->obj, NULL );
         link_windows = create_obj_symlink( &dir_id->obj, &dir_windows_str, 0, &dir_windows->obj, NULL );
         make_object_static( link_bno );
@@ -307,9 +308,9 @@ static void create_session( unsigned int id )
     {
         /* use a larger hash table for this one since it can contain a lot of objects */
         dir_bno     = create_directory( &dir_id->obj, &dir_bno_str, 0, 37, NULL );
-        dir_windows = create_directory( &dir_id->obj, &dir_windows_str, 0, HASH_SIZE, NULL );
+        dir_windows = create_directory( &dir_id->obj, &dir_windows_str, 0, DIR_HASH_SIZE, NULL );
     }
-    dir_winstation = create_directory( &dir_windows->obj, &dir_winstations_str, 0, HASH_SIZE, NULL );
+    dir_winstation = create_directory( &dir_windows->obj, &dir_winstations_str, 0, DIR_HASH_SIZE, NULL );
 
     link_global  = create_obj_symlink( &dir_bno->obj, &link_global_str, 0, &dir_bno_global->obj, NULL );
     link_local   = create_obj_symlink( &dir_bno->obj, &link_local_str, 0, &dir_bno->obj, NULL );
@@ -386,12 +387,12 @@ void init_directories(void)
     struct keyed_event *keyed_event;
     unsigned int i;
 
-    root_directory = create_directory( NULL, NULL, 0, HASH_SIZE, NULL );
-    dir_driver     = create_directory( &root_directory->obj, &dir_driver_str, 0, HASH_SIZE, NULL );
-    dir_device     = create_directory( &root_directory->obj, &dir_device_str, 0, HASH_SIZE, NULL );
-    dir_objtype    = create_directory( &root_directory->obj, &dir_objtype_str, 0, HASH_SIZE, NULL );
-    dir_kernel     = create_directory( &root_directory->obj, &dir_kernel_str, 0, HASH_SIZE, NULL );
-    dir_global     = create_directory( &root_directory->obj, &dir_global_str, 0, HASH_SIZE, NULL );
+    root_directory = create_directory( NULL, NULL, 0, DIR_HASH_SIZE, NULL );
+    dir_driver     = create_directory( &root_directory->obj, &dir_driver_str, 0, DIR_HASH_SIZE, NULL );
+    dir_device     = create_directory( &root_directory->obj, &dir_device_str, 0, DIR_HASH_SIZE, NULL );
+    dir_objtype    = create_directory( &root_directory->obj, &dir_objtype_str, 0, DIR_HASH_SIZE, NULL );
+    dir_kernel     = create_directory( &root_directory->obj, &dir_kernel_str, 0, DIR_HASH_SIZE, NULL );
+    dir_global     = create_directory( &root_directory->obj, &dir_global_str, 0, DIR_HASH_SIZE, NULL );
     make_object_static( &root_directory->obj );
     make_object_static( &dir_driver->obj );
     make_object_static( &dir_objtype->obj );
@@ -446,7 +447,7 @@ DECL_HANDLER(create_directory)
 
     if (!objattr) return;
 
-    if ((dir = create_directory( root, &name, objattr->attributes, HASH_SIZE, sd )))
+    if ((dir = create_directory( root, &name, objattr->attributes, DIR_HASH_SIZE, sd )))
     {
         reply->handle = alloc_handle( current->process, dir, req->access, objattr->attributes );
         release_object( dir );
