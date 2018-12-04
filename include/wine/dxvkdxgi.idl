@@ -1,0 +1,58 @@
+#pragma makedep header
+
+import "dxgi1_4.idl";
+
+[
+    object,
+    local,
+    uuid(104001a6-7f36-4957-b932-86ade9567d91)
+]
+interface IDXGIVkSwapChain : IUnknown
+{
+    HRESULT GetDesc(
+        [in] DXGI_SWAP_CHAIN_DESC1* pDesc
+    );
+    HRESULT GetAdapter(
+        [in] REFIID riid,
+        [out] void** ppvObject
+    );
+    HRESULT GetDevice(
+        [in] REFIID riid,
+        [out] void** ppDevice
+    );
+    HRESULT GetImage(
+        [in] UINT BufferId,
+        [in] REFIID riid,
+        [out] void **ppBuffer
+    );
+    UINT GetImageIndex();
+    HRESULT ChangeProperties(
+        [in] const DXGI_SWAP_CHAIN_DESC1* pDesc
+    );
+    HRESULT SetPresentRegion(
+        [in] const RECT* pRegion
+    );
+    HRESULT SetGammaControl(
+        [in] UINT NumControlPoints,
+        [in] const DXGI_RGB *pControlPoints
+    );
+    HRESULT Present(
+        [in] UINT SyncInterval,
+        [in] UINT PresentFlags,
+        [in] const DXGI_PRESENT_PARAMETERS *pPresentParameters
+    );
+}
+
+[
+    object,
+    local,
+    uuid(79352328-16f2-4f81-9746-9c2e2ccd43cf)
+]
+interface IDXGIVkPresentDevice : IUnknown
+{
+    HRESULT CreateSwapChainForHwnd(
+        [in] HWND hWnd,
+        [in] const DXGI_SWAP_CHAIN_DESC1 *pDesc,
+        [out] IDXGIVkSwapChain **ppSwapChain
+    );
+}

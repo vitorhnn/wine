@@ -37,6 +37,7 @@
 #ifdef DXGI_INIT_GUID
 #include "initguid.h"
 #endif
+#include "wine/dxvkdxgi.h"
 #include "wine/wined3d.h"
 #include "wine/winedxgi.h"
 

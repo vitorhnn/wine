@@ -673,6 +673,7 @@ SOURCES = \
 	windows.h \
 	windowsx.h \
 	wine/debug.h \
+	wine/dxvkdxgi.idl \
 	wine/exception.h \
 	wine/fil_data.idl \
 	wine/itss.idl \
