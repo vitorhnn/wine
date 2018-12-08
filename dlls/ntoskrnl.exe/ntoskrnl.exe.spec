@@ -52,6 +52,7 @@
 @ stub KefReleaseSpinLockFromDpcLevel
 @ stub KiAcquireSpinLock
 @ stub KiReleaseSpinLock
+@ stdcall KiAcquireFastMutex(ptr)
 @ stdcall -norelay ObfDereferenceObject(ptr)
 @ stdcall -norelay ObfReferenceObject(ptr)
 @ stub RtlPrefetchMemoryNonTemporal

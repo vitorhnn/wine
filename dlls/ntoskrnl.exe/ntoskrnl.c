@@ -2355,7 +2355,7 @@ void WINAPI KfLowerIrql( KIRQL NewIrql )
     if(NewIrql > OldIrql)
     {
         ERR("IRQL_NOT_LESS_OR_EQUAL");
-        return OldIrql;
+        return;
     }
 
     cur_thread = KeGetCurrentThread();
@@ -4172,7 +4172,31 @@ NTSTATUS WINAPI KeAreApcsDisabled(void)
 }
 
 /*********************************************************************
+ *           KiAcquireFastMutex    (NTOSKRNL.@)
+ * copied from ReactOS
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(KiAcquireFastMutex)
+void WINAPI __regs_KiAcquireFastMutex(PFAST_MUTEX FastMutex)
+#else
+void WINAPI KiAcquireFastMutex(PFAST_MUTEX FastMutex)
+#endif
+{
+    /* Increase contention count */
+    FastMutex->Contention++;
+
+    /* Wait for the event */
+    KeWaitForSingleObject(&FastMutex->Gate,
+                          Executive,
+                          KernelMode,
+                          FALSE,
+                          NULL);
+}
+
+
+/*********************************************************************
  *           ExAcquireFastMutex    (NTOSKRNL.@)
+ * copied from ReactOS
  */
 #ifdef DEFINE_FASTCALL1_ENTRYPOINT
 DEFINE_FASTCALL1_ENTRYPOINT(ExAcquireFastMutex)
@@ -4181,11 +4205,31 @@ void WINAPI __regs_ExAcquireFastMutex(PFAST_MUTEX FastMutex)
 void WINAPI ExAcquireFastMutex(PFAST_MUTEX FastMutex)
 #endif
 {
-    FIXME("(%p): stub\n", FastMutex); 
+    KIRQL OldIrql;
+
+    TRACE("(%p)\n", FastMutex);
+
+    if(KeGetCurrentIrql() > APC_LEVEL)
+        ERR("Current IRQL > APC_LEVEL\n");
+
+    /* Raise IRQL to APC */
+    KeRaiseIrql(APC_LEVEL, &OldIrql);
+
+    /* Decrease the count */
+    if (InterlockedDecrement(&FastMutex->Count))
+    {
+        /* Someone is still holding it, use slow path */
+        KiAcquireFastMutex(FastMutex);
+    }
+
+    /* Set the owner and IRQL */
+    FastMutex->Owner = KeGetCurrentThread();
+    FastMutex->OldIrql = OldIrql;
 }
 
 /*********************************************************************
  *           ExReleaseFastMutex    (NTOSKRNL.@)
+ * copied from ReactOS
  */
 #ifdef DEFINE_FASTCALL1_ENTRYPOINT
 DEFINE_FASTCALL1_ENTRYPOINT(ExReleaseFastMutex)
@@ -4194,7 +4238,26 @@ void WINAPI __regs_ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 void WINAPI ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 #endif
 {
-    FIXME("(%p): stub\n", FastMutex); 
+    KIRQL OldIrql;
+    
+    TRACE("(%p)\n", FastMutex);
+
+    if(KeGetCurrentIrql() > APC_LEVEL)
+        ERR("Current IRQL > APC_LEVEL\n");
+
+    /* Erase the owner */
+    FastMutex->Owner = NULL;
+    OldIrql = (KIRQL)FastMutex->OldIrql;
+
+    /* Increase the count */
+    if (InterlockedIncrement(&FastMutex->Count) <= 0)
+    {
+        /* Someone was waiting for it, signal the waiter */
+        KeSetEvent(&FastMutex->Gate, 0, FALSE);
+    }
+
+    /* Lower IRQL back */
+    KeLowerIrql(OldIrql);
 }
 
 /*********************************************************************
