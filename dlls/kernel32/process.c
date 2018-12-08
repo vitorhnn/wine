@@ -1672,7 +1672,7 @@ static int fork_and_exec( const RTL_USER_PROCESS_PARAMETERS *params, const char 
     int pid, err;
     char *filename, **argv, **envp;
 
-    if (!(filename = wine_get_native_file_name( params->ImagePathName.Buffer ))) return -1;
+    if (!(filename = wine_get_unix_file_name( params->ImagePathName.Buffer ))) return -1;
 
 #ifdef HAVE_PIPE2
     if (pipe2( fd, O_CLOEXEC ) == -1)
@@ -2700,7 +2700,7 @@ BOOL WINAPI CreateProcessInternalW( HANDLE token, LPCWSTR app_name, LPWSTR cmd_l
 
     if (cur_dir)
     {
-        if (!(unixdir = wine_get_native_file_name( cur_dir )))
+        if (!(unixdir = wine_get_unix_file_name( cur_dir )))
         {
             SetLastError(ERROR_DIRECTORY);
             goto done;
@@ -2709,7 +2709,7 @@ BOOL WINAPI CreateProcessInternalW( HANDLE token, LPCWSTR app_name, LPWSTR cmd_l
     else
     {
         WCHAR buf[MAX_PATH];
-        if (GetCurrentDirectoryW(MAX_PATH, buf)) unixdir = wine_get_native_file_name( buf );
+        if (GetCurrentDirectoryW(MAX_PATH, buf)) unixdir = wine_get_unix_file_name( buf );
     }
 
     info->hThread = info->hProcess = 0;

@@ -191,7 +191,7 @@ static void start_dosbox( const char *appname, const char *args )
     if (WriteFile( file, buffer, strlen(buffer), &written, NULL ) && written == strlen(buffer))
     {
         const char *args[5];
-        char *config_file = wine_get_native_file_name( config );
+        char *config_file = wine_get_unix_file_name( config );
         args[0] = dosbox;
         args[1] = "-userconf";
         args[2] = "-conf";

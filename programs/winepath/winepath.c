@@ -146,7 +146,7 @@ static int parse_options(WCHAR *argv[])
  */
 int wmain(int argc, WCHAR *argv[])
 {
-    LPSTR (*CDECL wine_get_native_file_name_ptr)(LPCWSTR) = NULL;
+    LPSTR (*CDECL wine_get_unix_file_name_ptr)(LPCWSTR) = NULL;
     LPWSTR (*CDECL wine_get_dos_file_name_ptr)(LPCSTR) = NULL;
     WCHAR dos_pathW[MAX_PATH];
     char path[MAX_PATH];
@@ -168,12 +168,12 @@ int wmain(int argc, WCHAR *argv[])
         outputformats = UNIXFORMAT;
 
     if (outputformats & UNIXFORMAT) {
-        wine_get_native_file_name_ptr = (void*)
+        wine_get_unix_file_name_ptr = (void*)
             GetProcAddress(GetModuleHandleA("KERNEL32"),
-                           "wine_get_native_file_name");
-        if (wine_get_native_file_name_ptr == NULL) {
+                           "wine_get_unix_file_name");
+        if (wine_get_unix_file_name_ptr == NULL) {
             fprintf(stderr, "%s: cannot get the address of "
-                            "'wine_get_native_file_name'\n", progname);
+                            "'wine_get_unix_file_name'\n", progname);
             exit(3);
         }
     }
@@ -213,7 +213,7 @@ int wmain(int argc, WCHAR *argv[])
                 char *unix_name;
                 WCHAR *slash, *c;
 
-                unix_name = wine_get_native_file_name_ptr(ntpath);
+                unix_name = wine_get_unix_file_name_ptr(ntpath);
                 if (unix_name)
                 {
                     if (tail)

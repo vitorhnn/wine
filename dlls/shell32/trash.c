@@ -162,7 +162,7 @@ BOOL TRASH_CanTrashFile(LPCWSTR wszPath)
 
     TRACE("(%s)\n", debugstr_w(wszPath));
 
-    if (!(unix_path = wine_get_native_file_name(wszPath)))
+    if (!(unix_path = wine_get_unix_file_name(wszPath)))
         return FALSE;
     if (!(trash_path = TRASH_GetTrashPath(unix_path, &base_name)))
     {
@@ -200,7 +200,7 @@ BOOL TRASH_TrashFile(LPCWSTR wszPath)
     int res;
 
     TRACE("(%s)\n", debugstr_w(wszPath));
-    if (!(unix_path = wine_get_native_file_name(wszPath)))
+    if (!(unix_path = wine_get_unix_file_name(wszPath)))
         return FALSE;
     if (!(trash_path = TRASH_GetTrashPath(unix_path, &base_name)))
     {
@@ -275,7 +275,7 @@ HRESULT TRASH_EnumItems(const WCHAR *path, LPITEMIDLIST **pidls, int *count)
             return E_FAIL;
     }
 
-    if(!(unix_path = wine_get_native_file_name(volume_path)))
+    if(!(unix_path = wine_get_unix_file_name(volume_path)))
         return E_OUTOFMEMORY;
 
     if(!(trash_path = TRASH_GetTrashPath(unix_path, &base_name)))
@@ -448,7 +448,7 @@ BOOL TRASH_CanTrashFile(LPCWSTR wszPath)
 
     TRACE("(%s)\n", debugstr_w(wszPath));
     if (!TRASH_EnsureInitialized()) return FALSE;
-    if (!(unix_path = wine_get_native_file_name(wszPath)))
+    if (!(unix_path = wine_get_unix_file_name(wszPath)))
         return FALSE;
     ret = lstat(unix_path, &file_stat);
     heap_free(unix_path);
@@ -598,7 +598,7 @@ BOOL TRASH_TrashFile(LPCWSTR wszPath)
     
     TRACE("(%s)\n", debugstr_w(wszPath));
     if (!TRASH_EnsureInitialized()) return FALSE;
-    if (!(unix_path = wine_get_native_file_name(wszPath)))
+    if (!(unix_path = wine_get_unix_file_name(wszPath)))
         return FALSE;
     result = TRASH_MoveFileToBucket(home_trash, unix_path);
     heap_free(unix_path);
@@ -806,7 +806,7 @@ HRESULT TRASH_RestoreItem(LPCITEMIDLIST pidl){
         return E_INVALIDARG;
     }
     TRASH_UnpackItemID(id,&data);
-    restore_path = wine_get_native_file_name(data.cFileName);
+    restore_path = wine_get_unix_file_name(data.cFileName);
     file_path = SHAlloc(max(strlen(home_trash->files_dir),strlen(home_trash->info_dir))+strlen(filename)+1);
     sprintf(file_path,"%s%s",home_trash->files_dir,filename);
     file_path[strlen(home_trash->files_dir)+strlen(filename)-suffix_length] = '\0';

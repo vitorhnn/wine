@@ -367,7 +367,7 @@ pcap_dumper_t* CDECL wine_pcap_dump_open(pcap_t *p, const char *fname)
 
     TRACE("(%p %s)\n", p, debugstr_a(fname));
 
-    unix_path = wine_get_native_file_name(fnameW);
+    unix_path = wine_get_unix_file_name(fnameW);
     heap_free(fnameW);
     if(!unix_path)
         return NULL;

@@ -718,7 +718,7 @@ static BOOL get_fallback_ppd( const char *printer_name, const WCHAR *ppd )
 
     TRACE( "(%s %s) found %s\n", debugstr_a(printer_name), debugstr_w(ppd), debugstr_a(src) );
 
-    if (!(dst = wine_get_native_file_name( ppd ))) goto fail;
+    if (!(dst = wine_get_unix_file_name( ppd ))) goto fail;
 
     if (symlink( src, dst ) == -1)
         if (errno != ENOSYS || !copy_file( src, dst ))
@@ -771,7 +771,7 @@ static WCHAR *get_ppd_dir( void )
 
 static void unlink_ppd( const WCHAR *ppd )
 {
-    char *unix_name = wine_get_native_file_name( ppd );
+    char *unix_name = wine_get_unix_file_name( ppd );
     unlink( unix_name );
     HeapFree( GetProcessHeap(), 0, unix_name );
 }
@@ -833,7 +833,7 @@ static BOOL get_cups_ppd( const char *printer_name, const WCHAR *ppd )
 {
     time_t modtime = 0;
     http_status_t http_status;
-    char *unix_name = wine_get_native_file_name( ppd );
+    char *unix_name = wine_get_unix_file_name( ppd );
 
     TRACE( "(%s, %s)\n", debugstr_a(printer_name), debugstr_w(ppd) );
 
@@ -8129,7 +8129,7 @@ static BOOL schedule_pipe(LPCWSTR cmd, LPCWSTR filename)
     pid_t pid, wret;
     int status;
 
-    if(!(unixname = wine_get_native_file_name(filename)))
+    if(!(unixname = wine_get_unix_file_name(filename)))
         return FALSE;
 
     len = WideCharToMultiByte(CP_UNIXCP, 0, cmd, -1, NULL, 0, NULL, NULL);
@@ -8287,7 +8287,7 @@ static BOOL schedule_cups(LPCWSTR printer_name, LPCWSTR filename, LPCWSTR docume
         int num_options = 0, i;
         cups_option_t *options = NULL;
 
-        if(!(unixname = wine_get_native_file_name(filename)))
+        if(!(unixname = wine_get_unix_file_name(filename)))
             return FALSE;
 
         len = WideCharToMultiByte(CP_UNIXCP, 0, printer_name, -1, NULL, 0, NULL, NULL);
@@ -8426,7 +8426,7 @@ static BOOL schedule_unixfile(LPCWSTR output, LPCWSTR filename)
     char *unixname, *outputA;
     DWORD len;
 
-    if(!(unixname = wine_get_native_file_name(filename)))
+    if(!(unixname = wine_get_unix_file_name(filename)))
         return FALSE;
 
     len = WideCharToMultiByte(CP_UNIXCP, 0, output, -1, NULL, 0, NULL, NULL);

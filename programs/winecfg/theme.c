@@ -767,7 +767,7 @@ static void read_shell_folder_link_targets(void) {
         hr = SHGetFolderPathW(NULL, asfiInfo[i].nFolder|CSIDL_FLAG_DONT_VERIFY, NULL, 
                               SHGFP_TYPE_CURRENT, wszPath);
         if (SUCCEEDED(hr)) {
-            char *pszUnixPath = wine_get_native_file_name(wszPath);
+            char *pszUnixPath = wine_get_unix_file_name(wszPath);
             if (pszUnixPath) {
                 struct stat statPath;
                 if (!lstat(pszUnixPath, &statPath) && S_ISLNK(statPath.st_mode)) {
@@ -913,7 +913,7 @@ static void apply_shell_folder_changes(void) {
         if (FAILED(hr)) continue;
 
         /* Retrieve the corresponding unix path. */
-        pszUnixPath = wine_get_native_file_name(wszPath);
+        pszUnixPath = wine_get_unix_file_name(wszPath);
         if (!pszUnixPath) continue;
         lstrcpyA(szUnixPath, pszUnixPath);
         HeapFree(GetProcessHeap(), 0, pszUnixPath);

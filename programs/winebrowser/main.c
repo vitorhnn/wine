@@ -54,7 +54,7 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(winebrowser);
 
-typedef LPSTR (*CDECL wine_get_native_file_name_t)(LPCWSTR unixname);
+typedef LPSTR (*CDECL wine_get_unix_file_name_t)(LPCWSTR unixname);
 
 static const WCHAR browser_key[] =
     {'S','o','f','t','w','a','r','e','\\','W','i','n','e','\\',
@@ -385,7 +385,7 @@ static WCHAR *encode_unix_path(const char *src)
 
 static WCHAR *convert_file_uri(IUri *uri)
 {
-    wine_get_native_file_name_t wine_get_native_file_name_ptr;
+    wine_get_unix_file_name_t wine_get_unix_file_name_ptr;
     struct stat dummy;
     WCHAR *new_path;
     char *unixpath;
@@ -393,9 +393,9 @@ static WCHAR *convert_file_uri(IUri *uri)
     HRESULT hres;
 
     /* check if the argument is a local file */
-    wine_get_native_file_name_ptr = (wine_get_native_file_name_t)
-           GetProcAddress( GetModuleHandleA( "KERNEL32" ), "wine_get_native_file_name" );
-    if(!wine_get_native_file_name_ptr)
+    wine_get_unix_file_name_ptr = (wine_get_unix_file_name_t)
+           GetProcAddress( GetModuleHandleA( "KERNEL32" ), "wine_get_unix_file_name" );
+    if(!wine_get_unix_file_name_ptr)
         return NULL;
 
     hres = IUri_GetPath(uri, &filename);
@@ -404,7 +404,7 @@ static WCHAR *convert_file_uri(IUri *uri)
 
     WINE_TRACE("Windows path: %s\n", wine_dbgstr_w(filename));
 
-    unixpath = wine_get_native_file_name_ptr(filename);
+    unixpath = wine_get_unix_file_name_ptr(filename);
     SysFreeString(filename);
     if(unixpath && stat(unixpath, &dummy) >= 0) {
         WINE_TRACE("Unix path: %s\n", wine_dbgstr_a(unixpath));

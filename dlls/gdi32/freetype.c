@@ -3068,7 +3068,7 @@ static char *get_winfonts_dir_path(LPCWSTR file)
     strcatW(windowsdir, fontsW);
     strcatW(windowsdir, slashW);
     strcatW(windowsdir, file);
-    return wine_get_native_file_name( windowsdir );
+    return wine_get_unix_file_name( windowsdir );
 }
 
 static void load_system_fonts(void)
@@ -3090,7 +3090,7 @@ static void load_system_fonts(void)
                 BOOL added = FALSE;
 
                 sprintfW(pathW, fmtW, windowsdir, data);
-                if((unixname = wine_get_native_file_name(pathW))) {
+                if((unixname = wine_get_unix_file_name(pathW))) {
                     added = AddFontToList(unixname, NULL, 0, ADDFONT_ALLOW_BITMAP | ADDFONT_ADD_TO_CACHE);
                     HeapFree(GetProcessHeap(), 0, unixname);
                 }
@@ -3266,7 +3266,7 @@ INT WineEngAddFontResourceEx(LPCWSTR file, DWORD flags, PVOID pdv)
 
         EnterCriticalSection( &freetype_cs );
 
-        if((unixname = wine_get_native_file_name(file)))
+        if((unixname = wine_get_unix_file_name(file)))
         {
             DWORD addfont_flags = ADDFONT_ALLOW_BITMAP | ADDFONT_ADD_RESOURCE;
 
@@ -3346,7 +3346,7 @@ BOOL WineEngRemoveFontResourceEx(LPCWSTR file, DWORD flags, PVOID pdv)
 
         EnterCriticalSection( &freetype_cs );
 
-        if ((unixname = wine_get_native_file_name(file)))
+        if ((unixname = wine_get_unix_file_name(file)))
         {
             DWORD addfont_flags = ADDFONT_ALLOW_BITMAP | ADDFONT_ADD_RESOURCE;
 
@@ -3401,7 +3401,7 @@ static char *get_ttf_file_name( LPCWSTR font_file, LPCWSTR font_path )
         GetFullPathNameW( font_file, len, fullname, NULL );
     }
 
-    unix_name = wine_get_native_file_name( fullname );
+    unix_name = wine_get_unix_file_name( fullname );
     HeapFree( GetProcessHeap(), 0, fullname );
     return unix_name;
 }
@@ -4200,7 +4200,7 @@ static void init_font_list(void)
     /* load in the fonts from %WINDOWSDIR%\\Fonts first of all */
     GetWindowsDirectoryW(windowsdir, ARRAY_SIZE(windowsdir));
     strcatW(windowsdir, fontsW);
-    if((unixname = wine_get_native_file_name(windowsdir)))
+    if((unixname = wine_get_unix_file_name(windowsdir)))
     {
         ReadFontDir(unixname, FALSE);
         HeapFree(GetProcessHeap(), 0, unixname);
@@ -4237,7 +4237,7 @@ static void init_font_list(void)
             {
                 if(data[0] && (data[1] == ':'))
                 {
-                    if((unixname = wine_get_native_file_name(data)))
+                    if((unixname = wine_get_unix_file_name(data)))
                     {
                         AddFontToList(unixname, NULL, 0, ADDFONT_ALLOW_BITMAP | ADDFONT_ADD_TO_CACHE);
                         HeapFree(GetProcessHeap(), 0, unixname);
@@ -4250,7 +4250,7 @@ static void init_font_list(void)
                     BOOL added = FALSE;
 
                     sprintfW(pathW, fmtW, windowsdir, data);
-                    if((unixname = wine_get_native_file_name(pathW)))
+                    if((unixname = wine_get_unix_file_name(pathW)))
                     {
                         added = AddFontToList(unixname, NULL, 0, ADDFONT_ALLOW_BITMAP | ADDFONT_ADD_TO_CACHE);
                         HeapFree(GetProcessHeap(), 0, unixname);
