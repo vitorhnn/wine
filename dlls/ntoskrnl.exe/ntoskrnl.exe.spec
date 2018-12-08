@@ -1,4 +1,5 @@
 @ stdcall -norelay ExAcquireFastMutexUnsafe(ptr)
+@ stdcall ExAcquireFastMutex(ptr)
 @ stub ExAcquireRundownProtection
 @ stub ExAcquireRundownProtectionEx
 @ stub ExInitializeRundownProtection
@@ -9,6 +10,7 @@
 @ stdcall -norelay ExInterlockedPushEntrySList (ptr ptr ptr) NTOSKRNL_ExInterlockedPushEntrySList
 @ stub ExReInitializeRundownProtection
 @ stdcall -norelay ExReleaseFastMutexUnsafe(ptr)
+@ stdcall ExReleaseFastMutex(ptr)
 @ stdcall ExReleaseResourceLite(ptr)
 @ stub ExReleaseRundownProtection
 @ stub ExReleaseRundownProtectionEx
@@ -900,7 +902,7 @@
 @ stdcall PsImpersonateClient(ptr ptr long long long)
 @ stub PsInitialSystemProcess
 @ stub PsIsProcessBeingDebugged
-@ stub PsIsSystemThread
+@ stdcall PsIsSystemThread(ptr)
 @ stub PsIsThreadImpersonating
 @ stub PsIsThreadTerminating
 @ stub PsJobType
@@ -1294,8 +1296,6 @@
 @ stub XIPDispatch
 @ stdcall -private ZwAccessCheckAndAuditAlarm(ptr long ptr ptr ptr long ptr long ptr ptr ptr) NtAccessCheckAndAuditAlarm
 @ stub ZwAddBootEntry
-@ stdcall ExAcquireFastMutex(ptr)
-@ stdcall ExReleaseFastMutex(ptr)
 @ stdcall -private ZwAdjustPrivilegesToken(long long ptr long ptr ptr) NtAdjustPrivilegesToken
 @ stdcall -private ZwAlertThread(long) NtAlertThread
 @ stdcall -private ZwAllocateVirtualMemory(long ptr long ptr long long) NtAllocateVirtualMemory
@@ -1426,6 +1426,7 @@
 @ stdcall -private -arch=i386 -ret64 _aullrem(int64 int64)
 @ stdcall -private -arch=i386 -ret64 _aullshr(int64 long)
 @ stdcall -private -arch=i386 -norelay _chkstk()
+@ stdcall -arch=x86_64 __C_specific_handler(ptr long ptr ptr) ntdll.__C_specific_handler
 @ cdecl -private -arch=i386 _except_handler2(ptr ptr ptr ptr) msvcrt._except_handler2
 @ cdecl -private -arch=i386 _except_handler3(ptr ptr ptr ptr) msvcrt._except_handler3
 @ cdecl -private -arch=i386 _global_unwind2(ptr) msvcrt._global_unwind2

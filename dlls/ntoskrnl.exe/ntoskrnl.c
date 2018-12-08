@@ -4110,3 +4110,12 @@ void WINAPI ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 {
     FIXME("(%p): stub\n", FastMutex);
 }
+
+/*********************************************************************
+ *           PsIsSystemThread    (NTOSKRNL.@)
+ */
+BOOLEAN WINAPI PsIsSystemThread(PETHREAD Thread)
+{
+    FIXME("(%p): stub\n", Thread);
+    return FALSE;
+}
