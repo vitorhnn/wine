@@ -910,7 +910,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
     Unknown19,
     Unknown20,
     SystemCacheInformation = 21,
-    Unknown22,
+    SystemPoolTagInformation = 22,
     SystemInterruptInformation = 23,
     SystemDpcBehaviourInformation = 24,
     SystemFullMemoryInformation = 25,
@@ -969,6 +969,8 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
     SystemSuperfetchInformation = 79,
     SystemMemoryListInformation = 80,
     SystemFileCacheInformationEx = 81,
+    SystemBootEnvironmentInformation = 90,
+    SystemCodeIntegrityInformation = 103,
     SystemLogicalProcessorInformationEx = 107,
     SystemInformationClassMax
 } SYSTEM_INFORMATION_CLASS, *PSYSTEM_INFORMATION_CLASS;
