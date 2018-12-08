@@ -1679,7 +1679,7 @@
 @ stub -i386 __wine_call_from_16_regs
 
 # Unix files
-@ cdecl wine_get_unix_file_name(wstr)
+@ cdecl wine_get_native_file_name(wstr)
 @ cdecl wine_get_dos_file_name(str)
 
 # Init code

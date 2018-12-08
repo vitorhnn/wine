@@ -302,7 +302,7 @@ static int CreateSpoolFile(LPCSTR pszOutput, pid_t *out_pid)
          * corresponding Unix file name.
          */
         MultiByteToWideChar(CP_ACP, 0, psCmdP, -1, psCmdPW, MAX_PATH);
-        if ((buffer = wine_get_unix_file_name(psCmdPW)))
+        if ((buffer = wine_get_native_file_name(psCmdPW)))
         {
             if ((fd = open(buffer, O_CREAT | O_TRUNC | O_WRONLY, 0666)) < 0)
             {

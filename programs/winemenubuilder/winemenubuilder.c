@@ -1744,8 +1744,8 @@ static char *relative_path( LPCWSTR link, LPCWSTR locn )
     char *unix_locn, *unix_link;
     char *relative = NULL;
 
-    unix_locn = wine_get_unix_file_name(locn);
-    unix_link = wine_get_unix_file_name(link);
+    unix_locn = wine_get_native_file_name(locn);
+    unix_link = wine_get_native_file_name(link);
     if (unix_locn && unix_link)
     {
         size_t len_unix_locn, len_unix_link;
@@ -2853,7 +2853,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
                  wine_dbgstr_w( szIconPath[0] ? szIconPath : szPath ));
     }
 
-    unix_link = wine_get_unix_file_name(link);
+    unix_link = wine_get_native_file_name(link);
     if (unix_link == NULL)
     {
         WINE_WARN("couldn't find unix path of %s\n", wine_dbgstr_w(link));
@@ -2900,7 +2900,7 @@ static BOOL InvokeShellLinker( IShellLinkW *sl, LPCWSTR link, BOOL bWait )
 
         /* convert app working dir */
         if (szWorkDir[0])
-            work_dir = wine_get_unix_file_name( szWorkDir );
+            work_dir = wine_get_native_file_name( szWorkDir );
     }
     else
     {
@@ -3040,7 +3040,7 @@ static BOOL InvokeShellLinkerForURL( IUniformResourceLocatorW *url, LPCWSTR link
     }
     WINE_TRACE("path       : %s\n", wine_dbgstr_w(urlPath));
 
-    unix_link = wine_get_unix_file_name(link);
+    unix_link = wine_get_native_file_name(link);
     if (unix_link == NULL)
     {
         WINE_WARN("couldn't find unix path of %s\n", wine_dbgstr_w(link));
@@ -3586,7 +3586,7 @@ static BOOL init_xdg(void)
     WCHAR shellDesktopPath[MAX_PATH];
     HRESULT hr = SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, SHGFP_TYPE_CURRENT, shellDesktopPath);
     if (SUCCEEDED(hr))
-        xdg_desktop_dir = wine_get_unix_file_name(shellDesktopPath);
+        xdg_desktop_dir = wine_get_native_file_name(shellDesktopPath);
     if (xdg_desktop_dir == NULL)
     {
         WINE_ERR("error looking up the desktop directory\n");

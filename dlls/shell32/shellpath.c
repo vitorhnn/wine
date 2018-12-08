@@ -4421,7 +4421,7 @@ static void _SHCreateSymbolicLinks(void)
     hr = SHGetFolderPathW(NULL, CSIDL_PERSONAL|CSIDL_FLAG_CREATE, NULL,
                           SHGFP_TYPE_DEFAULT, wszTempPath);
     if (FAILED(hr)) return;
-    pszPersonal = wine_get_unix_file_name(wszTempPath);
+    pszPersonal = wine_get_native_file_name(wszTempPath);
     if (!pszPersonal) return;
 
     hr = XDG_UserDirLookup(xdg_dirs, num, &xdg_results);
@@ -4496,7 +4496,7 @@ static void _SHCreateSymbolicLinks(void)
                               SHGFP_TYPE_DEFAULT, wszTempPath);
         if (FAILED(hr)) continue;
 
-        pszMyStuff = wine_get_unix_file_name(wszTempPath);
+        pszMyStuff = wine_get_native_file_name(wszTempPath);
         if (!pszMyStuff) continue;
         
         while (1)
@@ -4547,7 +4547,7 @@ static void _SHCreateSymbolicLinks(void)
     {
         hr = SHGetFolderPathW(NULL, CSIDL_DESKTOPDIRECTORY|CSIDL_FLAG_CREATE, NULL,
                               SHGFP_TYPE_DEFAULT, wszTempPath);
-        if (SUCCEEDED(hr) && (pszDesktop = wine_get_unix_file_name(wszTempPath))) 
+        if (SUCCEEDED(hr) && (pszDesktop = wine_get_native_file_name(wszTempPath))) 
         {
             remove(pszDesktop);
             if (xdg_desktop_dir)

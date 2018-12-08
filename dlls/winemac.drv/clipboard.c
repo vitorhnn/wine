@@ -1109,7 +1109,7 @@ static CFDataRef export_hdrop_to_filenames(HANDLE data)
         TRACE("    %s\n", dropfiles->fWide ? debugstr_w(p) : debugstr_a(p));
 
         if (dropfiles->fWide)
-            unixname = wine_get_unix_file_name(p);
+            unixname = wine_get_native_file_name(p);
         else
         {
             int len = MultiByteToWideChar(CP_ACP, 0, p, -1, NULL, 0);
@@ -1123,7 +1123,7 @@ static CFDataRef export_hdrop_to_filenames(HANDLE data)
                 }
 
                 MultiByteToWideChar(CP_ACP, 0, p, -1, buffer, buffer_len);
-                unixname = wine_get_unix_file_name(buffer);
+                unixname = wine_get_native_file_name(buffer);
             }
             else
                 unixname = NULL;

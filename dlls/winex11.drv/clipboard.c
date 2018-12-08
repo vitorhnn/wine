@@ -1358,7 +1358,7 @@ static BOOL export_hdrop( Display *display, Window win, Atom prop, Atom target, 
         dosFilename = HeapAlloc(GetProcessHeap(), 0, dosFilenameSize*sizeof(WCHAR));
         if (dosFilename == NULL) goto failed;
         DragQueryFileW( handle, i, dosFilename, dosFilenameSize );
-        unixFilename = wine_get_unix_file_name(dosFilename);
+        unixFilename = wine_get_native_file_name(dosFilename);
         HeapFree(GetProcessHeap(), 0, dosFilename);
         if (unixFilename == NULL) goto failed;
         uriSize = 8 + /* file:/// */

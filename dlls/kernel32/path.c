@@ -2016,12 +2016,12 @@ BOOL WINAPI NeedCurrentDirectoryForExePathA( LPCSTR name )
 
 
 /***********************************************************************
- *           wine_get_unix_file_name (KERNEL32.@) Not a Windows API
+ *           wine_get_native_file_name (KERNEL32.@) Not a Windows API
  *
  * Return the full Unix file name for a given path.
  * Returned buffer must be freed by caller.
  */
-char * CDECL wine_get_unix_file_name( LPCWSTR dosW )
+char * CDECL wine_get_native_file_name( LPCWSTR dosW )
 {
     UNICODE_STRING nt_name;
     ANSI_STRING unix_name;

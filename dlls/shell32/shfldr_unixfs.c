@@ -401,7 +401,7 @@ static BOOL UNIXFS_get_unix_path(LPCWSTR pszDosPath, char *pszCanonicalPath)
 
     /* Get the canonicalized unix path corresponding to the drive letter. */
     wszDrive[0] = pszDosPath[0];
-    pszUnixPath = wine_get_unix_file_name(wszDrive);
+    pszUnixPath = wine_get_native_file_name(wszDrive);
     if (!pszUnixPath) return FALSE;
     cDriveSymlinkLen = strlen(pszUnixPath);
     pElement = realpath(pszUnixPath, szPath);
@@ -415,7 +415,7 @@ static BOOL UNIXFS_get_unix_path(LPCWSTR pszDosPath, char *pszCanonicalPath)
     /* search for the most valid UNIX path possible, then append missing
      * path parts */
     Wow64DisableWow64FsRedirection(&redir);
-    while(!(pszUnixPath = wine_get_unix_file_name(dospath))){
+    while(!(pszUnixPath = wine_get_native_file_name(dospath))){
         if(has_failed){
             *dospath_end = '/';
             --dospath_end;
