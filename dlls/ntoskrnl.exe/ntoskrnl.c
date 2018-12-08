@@ -3153,6 +3153,7 @@ void WINAPI ExReleaseResourceForThreadLite( PERESOURCE resource, ERESOURCE_THREA
 void WINAPI KeEnterCriticalRegion(void)
 {
     FIXME(": stub\n");
+    /* Fix KeAreApcsDisabled when implementing this */
 }
 
 /***********************************************************************
@@ -3161,6 +3162,7 @@ void WINAPI KeEnterCriticalRegion(void)
 void WINAPI KeLeaveCriticalRegion(void)
 {
     FIXME(": stub\n");
+    /* Fix KeAreApcsDisabled when implementing this */
 }
 
 /***********************************************************************
@@ -4073,4 +4075,12 @@ NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS fromprocess, PVOID fromaddress, PE
 {
     FIXME("stub: %p %p %p %p %lu %d %p\n", fromprocess, fromaddress, toprocess, toaddress, bufsize, mode, copied);
     return STATUS_NOT_IMPLEMENTED;
+}
+
+/*********************************************************************
+ *           MmCopyVirtualMemory    (NTOSKRNL.@)
+ */
+NTSTATUS WINAPI KeAreApcsDisabled()
+{
+    return FALSE;
 }
