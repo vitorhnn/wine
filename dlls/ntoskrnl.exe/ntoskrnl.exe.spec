@@ -535,6 +535,7 @@
 @ stub KeFindConfigurationNextEntry
 @ stub KeFlushEntireTb
 @ stdcall KeFlushQueuedDpcs()
+@ stdcall KeGetCurrentIrql()
 @ stdcall KeGetCurrentThread()
 @ stub KeGetPreviousMode
 @ stub KeGetRecommendedSharedDataAlignment

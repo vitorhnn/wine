@@ -2272,6 +2272,7 @@ PEPROCESS WINAPI IoGetCurrentProcess(void)
 struct _KTHREAD
 {
     DWORD tid;
+    KIRQL irql;
 };
 
 /***********************************************************************
@@ -2284,7 +2285,8 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
     {
         ret = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(struct _KTHREAD));
 
-        ret->tid = GetCurrentThreadId();
+        ret->tid  = GetCurrentThreadId();
+        ret->irql = PASSIVE_LEVEL;
 
         NtCurrentTeb()->Spare4 = ret;
     }else
@@ -2295,6 +2297,17 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
     TRACE("KeGetCurrentThread() returning %p\n", ret);
 
     return ret;
+}
+
+
+/***********************************************************************
+ *           KeGetCurrentIrql   (NTOSKRNL.EXE.@)
+ */
+KIRQL WINAPI KeGetCurrentIrql(void)
+{
+    struct _KTHREAD *cur_thread = KeGetCurrentThread();
+
+    return cur_thread->irql;
 }
 
 /***********************************************************************
@@ -4115,7 +4128,7 @@ void WINAPI __regs_ExAcquireFastMutex(PFAST_MUTEX FastMutex)
 void WINAPI ExAcquireFastMutex(PFAST_MUTEX FastMutex)
 #endif
 {
-    FIXME("(%p): stub\n", FastMutex);
+    FIXME("(%p): stub\n", FastMutex); 
 }
 
 /*********************************************************************
@@ -4128,7 +4141,7 @@ void WINAPI __regs_ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 void WINAPI ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 #endif
 {
-    FIXME("(%p): stub\n", FastMutex);
+    FIXME("(%p): stub\n", FastMutex); 
 }
 
 /*********************************************************************

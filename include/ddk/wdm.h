@@ -385,6 +385,11 @@ typedef struct _DRIVER_OBJECT *PDRIVER_OBJECT;
 typedef UCHAR KIRQL, *PKIRQL;
 typedef CCHAR KPROCESSOR_MODE;
 
+#define PASSIVE_LEVEL 0             // Passive release level
+#define LOW_LEVEL 0                 // Lowest interrupt level
+#define APC_LEVEL 1                 // APC interrupt level
+#define DISPATCH_LEVEL 2            // Dispatcher level
+
 typedef VOID (WINAPI *PDRIVER_CANCEL)(
   IN struct _DEVICE_OBJECT  *DeviceObject,
   IN struct _IRP  *Irp);
