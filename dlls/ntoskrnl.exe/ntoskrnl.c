@@ -2294,7 +2294,7 @@ PRKTHREAD WINAPI KeGetCurrentThread(void)
         ret = NtCurrentTeb()->Spare4;
     }
 
-    TRACE("KeGetCurrentThread() returning %p\n", ret);
+    TRACE("returning %p\n", ret);
 
     return ret;
 }
@@ -3044,11 +3044,58 @@ NTSTATUS WINAPI PsSetLoadImageNotifyRoutine(PLOAD_IMAGE_NOTIFY_ROUTINE routine)
  */
 NTSTATUS WINAPI PsLookupProcessByProcessId(HANDLE processid, PEPROCESS *process)
 {
-    static int once;
-    if (!once++) FIXME("(%p %p) stub\n", processid, process);
-    return STATUS_NOT_IMPLEMENTED;
+    FIXME("(%p %p) semi-stub\n", processid, process);
+
+    if(process)
+    {
+        *process = processid;
+    }
+
+    return STATUS_SUCCESS;
 }
 
+DWORD WINAPI K32GetProcessImageFileNameA( HANDLE process, LPSTR file, DWORD size );
+/*****************************************************
+ *           PsGetProcessImageFileName  (NTOSKRNL.EXE.@)
+ */
+LPSTR WINAPI PsGetProcessImageFileName(PEPROCESS process)
+{
+    HANDLE proc_handle;
+    LPSTR full_path;
+    LPSTR shortended_path;
+    LPSTR image_name;
+
+    if(!process)
+    {
+        TRACE("PEPROCESS = 0, returning\n");
+        return NULL;
+    }
+
+    if(!(proc_handle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, (DWORD)(DWORD64) process)))
+    {
+        TRACE("Unable to open PEPROCESS as PID, PEPROCESS = %u\n", (DWORD)(DWORD64) process);
+        return NULL;
+    }
+
+    full_path = RtlAllocateHeap(GetProcessHeap(), 0, MAX_PATH);
+
+    if(!K32GetProcessImageFileNameA(proc_handle, full_path, MAX_PATH))
+    {
+        TRACE("Unable to get image name from handle, error code: %u\n", GetLastError());
+        return NULL;
+    }
+
+    CloseHandle(proc_handle);
+
+    image_name = full_path;
+
+    while((shortended_path = strstr(image_name, "\\")) != NULL)
+        image_name = shortended_path + 1;
+
+    TRACE("returning %s\n", image_name);
+
+    return image_name;
+}
 
 /*****************************************************
  *           IoSetThreadHardErrorMode  (NTOSKRNL.EXE.@)
@@ -4239,7 +4286,7 @@ void WINAPI ExReleaseFastMutex(PFAST_MUTEX FastMutex)
 #endif
 {
     KIRQL OldIrql;
-    
+
     TRACE("(%p)\n", FastMutex);
 
     if(KeGetCurrentIrql() > APC_LEVEL)
