@@ -638,6 +638,8 @@
 @ stdcall KeWaitForMultipleObjects(long ptr long long long long ptr ptr)
 @ stdcall KeWaitForMutexObject(ptr long long long ptr)
 @ stdcall KeWaitForSingleObject(ptr long long long ptr)
+@ stdcall KfRaiseIrql(long)
+@ stdcall KfLowerIrql(long)
 @ stub KiBugCheckData
 @ stub KiCoprocessorError
 @ stub KiDeliverApc

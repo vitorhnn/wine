@@ -2311,6 +2311,59 @@ KIRQL WINAPI KeGetCurrentIrql(void)
 }
 
 /***********************************************************************
+ *           KfRaiseIrql   (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT( KfRaiseIrql )
+KIRQL WINAPI DECLSPEC_HIDDEN __regs_KfRaiseIrql( KIRQL NewIrql )
+#else
+KIRQL WINAPI KfRaiseIrql( KIRQL NewIrql )
+#endif
+{
+    KIRQL OldIrql;
+    struct _KTHREAD *cur_thread;
+
+    OldIrql = KeGetCurrentIrql();
+
+    if(NewIrql < OldIrql)
+    {
+        ERR("NewIrql < OldIrql");
+        return OldIrql;
+    }
+
+    cur_thread = KeGetCurrentThread();
+    cur_thread->irql = NewIrql;
+
+    return OldIrql;
+}
+
+/***********************************************************************
+ *           KfRaiseIrql   (NTOSKRNL.EXE.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT( KfLowerIrql )
+void WINAPI DECLSPEC_HIDDEN __regs_KfLowerIrql( KIRQL NewIrql )
+#else
+void WINAPI KfLowerIrql( KIRQL NewIrql )
+#endif
+{
+    KIRQL OldIrql;
+    struct _KTHREAD *cur_thread;
+
+    OldIrql = KeGetCurrentIrql();
+
+    if(NewIrql > OldIrql)
+    {
+        ERR("IRQL_NOT_LESS_OR_EQUAL");
+        return OldIrql;
+    }
+
+    cur_thread = KeGetCurrentThread();
+
+    cur_thread->irql = NewIrql;
+}
+
+/***********************************************************************
  *           KeInitializeSpinLock   (NTOSKRNL.EXE.@)
  */
 void WINAPI KeInitializeSpinLock( PKSPIN_LOCK SpinLock )

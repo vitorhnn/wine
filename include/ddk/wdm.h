@@ -390,6 +390,9 @@ typedef CCHAR KPROCESSOR_MODE;
 #define APC_LEVEL 1                 // APC interrupt level
 #define DISPATCH_LEVEL 2            // Dispatcher level
 
+#define KeLowerIrql(a) KfLowerIrql(a)
+#define KeRaiseIrql(a,b) *(b) = KfRaiseIrql(a)
+
 typedef VOID (WINAPI *PDRIVER_CANCEL)(
   IN struct _DEVICE_OBJECT  *DeviceObject,
   IN struct _IRP  *Irp);
