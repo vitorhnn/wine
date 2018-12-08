@@ -4078,9 +4078,35 @@ NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS fromprocess, PVOID fromaddress, PE
 }
 
 /*********************************************************************
- *           MmCopyVirtualMemory    (NTOSKRNL.@)
+ *           KeAreApcsDisabled    (NTOSKRNL.@)
  */
 NTSTATUS WINAPI KeAreApcsDisabled()
 {
     return FALSE;
+}
+
+/*********************************************************************
+ *           ExAcquireFastMutex    (NTOSKRNL.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExAcquireFastMutex)
+void WINAPI __regs_ExAcquireFastMutex(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExAcquireFastMutex(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
+}
+
+/*********************************************************************
+ *           ExReleaseFastMutex    (NTOSKRNL.@)
+ */
+#ifdef DEFINE_FASTCALL1_ENTRYPOINT
+DEFINE_FASTCALL1_ENTRYPOINT(ExReleaseFastMutex)
+void WINAPI __regs_ExReleaseFastMutex(PFAST_MUTEX FastMutex)
+#else
+void WINAPI ExReleaseFastMutex(PFAST_MUTEX FastMutex)
+#endif
+{
+    FIXME("(%p): stub\n", FastMutex);
 }

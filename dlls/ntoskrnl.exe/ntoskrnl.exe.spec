@@ -1294,6 +1294,8 @@
 @ stub XIPDispatch
 @ stdcall -private ZwAccessCheckAndAuditAlarm(ptr long ptr ptr ptr long ptr long ptr ptr ptr) NtAccessCheckAndAuditAlarm
 @ stub ZwAddBootEntry
+@ stdcall ExAcquireFastMutex(ptr)
+@ stdcall ExReleaseFastMutex(ptr)
 @ stdcall -private ZwAdjustPrivilegesToken(long long ptr long ptr ptr) NtAdjustPrivilegesToken
 @ stdcall -private ZwAlertThread(long) NtAlertThread
 @ stdcall -private ZwAllocateVirtualMemory(long ptr long ptr long long) NtAllocateVirtualMemory
