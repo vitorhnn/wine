@@ -2268,13 +2268,33 @@ PEPROCESS WINAPI IoGetCurrentProcess(void)
     return NULL;
 }
 
+/* Custom Internal KThread structure*/
+struct _KTHREAD
+{
+    DWORD tid;
+};
+
 /***********************************************************************
  *           KeGetCurrentThread / PsGetCurrentThread   (NTOSKRNL.EXE.@)
  */
 PRKTHREAD WINAPI KeGetCurrentThread(void)
 {
-    FIXME("() stub\n");
-    return NULL;
+    struct _KTHREAD *ret;
+    if(!NtCurrentTeb()->Spare4)
+    {
+        ret = RtlAllocateHeap(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(struct _KTHREAD));
+
+        ret->tid = GetCurrentThreadId();
+
+        NtCurrentTeb()->Spare4 = ret;
+    }else
+    {
+        ret = NtCurrentTeb()->Spare4;
+    }
+
+    TRACE("KeGetCurrentThread() returning %p\n", ret);
+
+    return ret;
 }
 
 /***********************************************************************
@@ -4080,7 +4100,7 @@ NTSTATUS WINAPI MmCopyVirtualMemory(PEPROCESS fromprocess, PVOID fromaddress, PE
 /*********************************************************************
  *           KeAreApcsDisabled    (NTOSKRNL.@)
  */
-NTSTATUS WINAPI KeAreApcsDisabled()
+NTSTATUS WINAPI KeAreApcsDisabled(void)
 {
     return FALSE;
 }
