@@ -157,6 +157,7 @@ NTSTATUS WINAPI KeWaitForMultipleObjects(ULONG count, void *pobjs[],
 NTSTATUS WINAPI KeWaitForSingleObject( void *obj, KWAIT_REASON reason,
     KPROCESSOR_MODE mode, BOOLEAN alertable, LARGE_INTEGER *timeout )
 {
+    TRACE("object: %p\n", obj);
     return KeWaitForMultipleObjects( 1, &obj, WaitAny, reason, mode, alertable, timeout, NULL );
 }
 
