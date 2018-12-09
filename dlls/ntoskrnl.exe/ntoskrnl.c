@@ -3054,6 +3054,43 @@ NTSTATUS WINAPI PsLookupProcessByProcessId(HANDLE processid, PEPROCESS *process)
     return STATUS_SUCCESS;
 }
 
+/*****************************************************
+ *           PsLookupThreadByThreadId  (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI PsLookupThreadByThreadId(HANDLE ThreadId, PETHREAD *Thread)
+{
+    HANDLE thread_handle;
+    THREAD_BASIC_INFORMATION tbi;
+    NTSTATUS stat;
+
+    TRACE("(%p %p)\n", ThreadId, Thread);
+
+    thread_handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, HandleToUlong(ThreadId));
+
+    if(!thread_handle)
+    {
+        TRACE("error getting handle %u\n", GetLastError());
+        *Thread = NULL;
+        return STATUS_INVALID_CID;
+    }
+
+    if(stat = NtQueryInformationThread(thread_handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL))
+    {
+        TRACE("error getting TEB from incoming ThreadId, error: %p\n", stat);
+        *Thread = NULL;
+        return stat;
+    }
+
+    if(Thread)
+    {
+        *Thread = ((PTEB)(tbi.TebBaseAddress))->Spare4;
+    }
+
+    CloseHandle(thread_handle);
+
+    return STATUS_SUCCESS;
+}
+
 DWORD WINAPI K32GetProcessImageFileNameA( HANDLE process, LPSTR file, DWORD size );
 /*****************************************************
  *           PsGetProcessImageFileName  (NTOSKRNL.EXE.@)
