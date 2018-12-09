@@ -2759,6 +2759,21 @@ void WINAPI ObfDereferenceObject( void *obj )
 }
 
 /***********************************************************************
+ *           ObOpenObjectByPointer   (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI ObOpenObjectByPointer(PVOID Object,
+                                      ULONG HandleAttributes,
+                                      PACCESS_STATE PassedAccessState,
+                                      ACCESS_MASK DesiredAccess,
+                                      POBJECT_TYPE ObjectType,
+                                      KPROCESSOR_MODE Mode,
+                                      PHANDLE handle)
+{
+    FIXME("stub");
+    return STATUS_INVALID_PARAMETER;
+}
+
+/***********************************************************************
  *           ObRegisterCallbacks (NTOSKRNL.EXE.@)
  */
 NTSTATUS WINAPI ObRegisterCallbacks(POB_CALLBACK_REGISTRATION *callBack, void **handle)
