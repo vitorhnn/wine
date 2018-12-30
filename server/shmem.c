@@ -139,7 +139,7 @@ void* shmalloc(size_t size)
         /* make new chunk */
         ChunkHeader* new_chunk;
         assert(cur_subheap->magic == SubHeapMagic);
-        new_chunk = (void*)cur_subheap + sizeof(SubHeap) + cur_subheap->new_chunk_offset;
+        new_chunk = (void*)( (unsigned char*)cur_subheap + sizeof(SubHeap) + cur_subheap->new_chunk_offset );
 
         new_chunk->user_data_size = size;
         
@@ -148,7 +148,7 @@ void* shmalloc(size_t size)
 
         new_chunk->magic = InUseMagic;
         /* Write to prev_size of potential next chunk*/
-        ChunkHeader* next_chunk = (void*)new_chunk + new_chunk->user_data_size + InUseChunkHeaderSize;
+        ChunkHeader* next_chunk = (void*)( (unsigned char*)new_chunk + new_chunk->user_data_size + InUseChunkHeaderSize );
         next_chunk->previous_chunk_size = new_chunk->user_data_size;
         
         return &(new_chunk->user_data);
@@ -162,7 +162,7 @@ void* shmalloc(size_t size)
     /* do we need to split off a tail free chunk? */
     if(free_chunk_header->user_data_size > (size + FreeChunkHeaderSize))
     {
-        ChunkHeader* tail_chunk = (void*)free_chunk_header + full_size;
+        ChunkHeader* tail_chunk = (void*)( (unsigned char*)free_chunk_header + full_size );
         
         tail_chunk->previous_chunk_size = size;
         tail_chunk->user_data_size = free_chunk_header->user_data_size - (size + InUseChunkHeaderSize);
@@ -170,7 +170,7 @@ void* shmalloc(size_t size)
         
         list_add_after(prev_entry, &tail_chunk->entry);
 
-        ChunkHeader* next_chunk = (void*)tail_chunk + tail_chunk->user_data_size + InUseChunkHeaderSize;
+        ChunkHeader* next_chunk = (void*)( (unsigned char*)tail_chunk + tail_chunk->user_data_size + InUseChunkHeaderSize );
         next_chunk->previous_chunk_size = tail_chunk->user_data_size;
         
         free_chunk_header->user_data_size = size;
@@ -181,7 +181,7 @@ void* shmalloc(size_t size)
 
 void shfree(void* p)
 {
-    ChunkHeader* freeing_header = p - InUseChunkHeaderSize;
+    ChunkHeader* freeing_header = (void*)( (unsigned char*)p - InUseChunkHeaderSize);
     
     assert(freeing_header->magic == InUseMagic);
     
@@ -191,13 +191,13 @@ void shfree(void* p)
     /* need to check for free blocks before and behind*/
     if(freeing_header->previous_chunk_size)
     {
-        prev_chunk = (void*)freeing_header - (freeing_header->previous_chunk_size + InUseChunkHeaderSize);
+        prev_chunk = (void*)( (unsigned char*)freeing_header - (freeing_header->previous_chunk_size + InUseChunkHeaderSize) );
         
         if(prev_chunk->magic != FreeMagic)
             prev_chunk = NULL;
     }
     
-    next_chunk = (void*)freeing_header + InUseChunkHeaderSize + freeing_header->user_data_size;
+    next_chunk = (void*)( (unsigned char*)freeing_header + InUseChunkHeaderSize + freeing_header->user_data_size );
     if(next_chunk->magic != FreeMagic)
         next_chunk = NULL;
     
@@ -210,7 +210,7 @@ void shfree(void* p)
         size_t append_size = InUseChunkHeaderSize + next_chunk->user_data_size;
         
         /* Update next in use chunk's previous size in case needed */
-        ChunkHeader* next_next_chunk = (void*)next_chunk + append_size;
+        ChunkHeader* next_next_chunk = (void*)( (unsigned char*)next_chunk + append_size );
         next_next_chunk->previous_chunk_size += append_size;
         
         /* Pass it down to enlarge the chunk we are freeing */
@@ -224,7 +224,7 @@ void shfree(void* p)
         
         prev_chunk->user_data_size += append_size;
         
-        ChunkHeader* next_next_chunk = (void*)freeing_header + append_size;
+        ChunkHeader* next_next_chunk = (void*)( (unsigned char*)freeing_header + append_size );
         
         next_next_chunk->previous_chunk_size += append_size;
     }else{
@@ -238,7 +238,7 @@ void shfree(void* p)
         
         for(size_t prev_size = cur_chunk->previous_chunk_size; prev_size > 0; prev_size = cur_chunk->previous_chunk_size)
         {
-            cur_chunk = (void*)cur_chunk - (prev_size + InUseChunkHeaderSize);
+            cur_chunk = (void*)( (unsigned char*)cur_chunk - (prev_size + InUseChunkHeaderSize) );
             
             if(cur_chunk->magic == InUseMagic) continue;
             
@@ -250,7 +250,7 @@ void shfree(void* p)
         /* No other free chunks before hand */
         
         /* now cur_chunk is the base chunk, right after the subheap header */
-        SubHeap* cur_subheap = (void*) cur_chunk - sizeof(SubHeap);
+        SubHeap* cur_subheap = (void*)( (unsigned char*) cur_chunk - sizeof(SubHeap) );
         
         assert(cur_subheap->magic == SubHeapMagic);
         
