@@ -160,6 +160,7 @@ extern int get_page_size(void);
 
 /* device functions */
 
+void notify_new_mapping( void* mapping );
 extern struct object *create_named_pipe_device( struct object *root, const struct unicode_str *name );
 extern struct object *create_mailslot_device( struct object *root, const struct unicode_str *name );
 extern struct object *create_unix_device( struct object *root, const struct unicode_str *name,

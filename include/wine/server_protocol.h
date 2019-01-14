@@ -5177,9 +5177,10 @@ struct allocate_locally_unique_id_reply
 struct create_device_manager_request
 {
     struct request_header __header;
+    char __pad_12[4];
+    client_ptr_t new_mapping_handler;
     unsigned int access;
     unsigned int attributes;
-    char __pad_20[4];
 };
 struct create_device_manager_reply
 {
@@ -5663,6 +5664,22 @@ struct terminate_job_reply
     struct reply_header __header;
 };
 
+#define SUBHEAP_SIZE 0x80000
+
+
+struct init_shared_kernel_memory_request
+{
+    struct request_header __header;
+    char __pad_12[4];
+};
+struct init_shared_kernel_memory_reply
+{
+    struct reply_header __header;
+    data_size_t internal_size;
+    /* VARARG(mappings,bytes); */
+    char __pad_12[4];
+};
+
 
 enum request
 {
@@ -5957,6 +5974,7 @@ enum request
     REQ_set_job_limits,
     REQ_set_job_completion_port,
     REQ_terminate_job,
+    REQ_init_shared_kernel_memory,
     REQ_NB_REQUESTS
 };
 
@@ -6255,6 +6273,7 @@ union generic_request
     struct set_job_limits_request set_job_limits_request;
     struct set_job_completion_port_request set_job_completion_port_request;
     struct terminate_job_request terminate_job_request;
+    struct init_shared_kernel_memory_request init_shared_kernel_memory_request;
 };
 union generic_reply
 {
@@ -6551,8 +6570,9 @@ union generic_reply
     struct set_job_limits_reply set_job_limits_reply;
     struct set_job_completion_port_reply set_job_completion_port_reply;
     struct terminate_job_reply terminate_job_reply;
+    struct init_shared_kernel_memory_reply init_shared_kernel_memory_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 571
+#define SERVER_PROTOCOL_VERSION 572
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */

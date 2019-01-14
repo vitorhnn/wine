@@ -24,6 +24,8 @@
 
 #include <stdlib.h>
 
+extern void init_shared_memory(void);
+
 extern void* shmalloc(size_t size);
 
 extern void shfree(void* p);

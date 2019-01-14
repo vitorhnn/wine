@@ -403,6 +403,7 @@ DECL_HANDLER(process_in_job);
 DECL_HANDLER(set_job_limits);
 DECL_HANDLER(set_job_completion_port);
 DECL_HANDLER(terminate_job);
+DECL_HANDLER(init_shared_kernel_memory);
 
 #ifdef WANT_REQUEST_HANDLERS
 
@@ -700,6 +701,7 @@ static const req_handler req_handlers[REQ_NB_REQUESTS] =
     (req_handler)req_set_job_limits,
     (req_handler)req_set_job_completion_port,
     (req_handler)req_terminate_job,
+    (req_handler)req_init_shared_kernel_memory,
 };
 
 C_ASSERT( sizeof(affinity_t) == 8 );
@@ -2257,9 +2259,10 @@ C_ASSERT( sizeof(struct get_token_impersonation_level_reply) == 16 );
 C_ASSERT( sizeof(struct allocate_locally_unique_id_request) == 16 );
 C_ASSERT( FIELD_OFFSET(struct allocate_locally_unique_id_reply, luid) == 8 );
 C_ASSERT( sizeof(struct allocate_locally_unique_id_reply) == 16 );
-C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, access) == 12 );
-C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, attributes) == 16 );
-C_ASSERT( sizeof(struct create_device_manager_request) == 24 );
+C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, new_mapping_handler) == 16 );
+C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, access) == 24 );
+C_ASSERT( FIELD_OFFSET(struct create_device_manager_request, attributes) == 28 );
+C_ASSERT( sizeof(struct create_device_manager_request) == 32 );
 C_ASSERT( FIELD_OFFSET(struct create_device_manager_reply, handle) == 8 );
 C_ASSERT( sizeof(struct create_device_manager_reply) == 16 );
 C_ASSERT( FIELD_OFFSET(struct create_device_request, access) == 12 );
@@ -2406,6 +2409,9 @@ C_ASSERT( sizeof(struct set_job_completion_port_request) == 32 );
 C_ASSERT( FIELD_OFFSET(struct terminate_job_request, handle) == 12 );
 C_ASSERT( FIELD_OFFSET(struct terminate_job_request, status) == 16 );
 C_ASSERT( sizeof(struct terminate_job_request) == 24 );
+C_ASSERT( sizeof(struct init_shared_kernel_memory_request) == 16 );
+C_ASSERT( FIELD_OFFSET(struct init_shared_kernel_memory_reply, internal_size) == 8 );
+C_ASSERT( sizeof(struct init_shared_kernel_memory_reply) == 16 );
 
 #endif  /* WANT_REQUEST_HANDLERS */
 

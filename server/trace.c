@@ -4246,7 +4246,8 @@ static void dump_allocate_locally_unique_id_reply( const struct allocate_locally
 
 static void dump_create_device_manager_request( const struct create_device_manager_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
+    dump_uint64( " new_mapping_handler=", &req->new_mapping_handler );
+    fprintf( stderr, ", access=%08x", req->access );
     fprintf( stderr, ", attributes=%08x", req->attributes );
 }
 
@@ -4541,6 +4542,16 @@ static void dump_terminate_job_request( const struct terminate_job_request *req 
     fprintf( stderr, ", status=%d", req->status );
 }
 
+static void dump_init_shared_kernel_memory_request( const struct init_shared_kernel_memory_request *req )
+{
+}
+
+static void dump_init_shared_kernel_memory_reply( const struct init_shared_kernel_memory_reply *req )
+{
+    fprintf( stderr, " internal_size=%u", req->internal_size );
+    dump_varargs_bytes( ", mappings=", cur_size );
+}
+
 static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_new_process_request,
     (dump_func)dump_exec_process_request,
@@ -4833,6 +4844,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] = {
     (dump_func)dump_set_job_limits_request,
     (dump_func)dump_set_job_completion_port_request,
     (dump_func)dump_terminate_job_request,
+    (dump_func)dump_init_shared_kernel_memory_request,
 };
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
@@ -5127,6 +5139,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] = {
     NULL,
     NULL,
     NULL,
+    (dump_func)dump_init_shared_kernel_memory_reply,
 };
 
 static const char * const req_names[REQ_NB_REQUESTS] = {
@@ -5421,6 +5434,7 @@ static const char * const req_names[REQ_NB_REQUESTS] = {
     "set_job_limits",
     "set_job_completion_port",
     "terminate_job",
+    "init_shared_kernel_memory",
 };
 
 static const struct

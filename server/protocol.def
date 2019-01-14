@@ -3578,6 +3578,7 @@ struct handle_info
 
 /* Create a device manager */
 @REQ(create_device_manager)
+    client_ptr_t new_mapping_handler;
     unsigned int access;          /* wanted access rights */
     unsigned int attributes;      /* object attributes */
 @REPLY
@@ -3861,4 +3862,13 @@ struct handle_info
 @REQ(terminate_job)
     obj_handle_t handle;          /* handle to the job */
     int          status;          /* process exit code */
+@END
+
+#define SUBHEAP_SIZE 0x80000 /* 128 pages*/
+
+/* Gives winedevice information on shared kernel memory mappings */
+@REQ(init_shared_kernel_memory)
+@REPLY
+    data_size_t internal_size;
+    VARARG(mappings,bytes);
 @END

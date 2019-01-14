@@ -35,6 +35,7 @@
 #include "object.h"
 #include "file.h"
 #include "thread.h"
+#include "shmem.h"
 #include "request.h"
 #include "wine/library.h"
 
@@ -145,6 +146,7 @@ int main( int argc, char *argv[] )
     init_signals();
     init_directories();
     init_registry();
+    init_shared_memory();
     main_loop();
     return 0;
 }

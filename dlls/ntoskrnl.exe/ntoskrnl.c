@@ -25,6 +25,7 @@
 #include "wine/port.h"
 
 #include <stdarg.h>
+#include <sys/mman.h>
 
 #define NONAMELESSUNION
 #define NONAMELESSSTRUCT
@@ -243,6 +244,19 @@ static BOOL guid_from_string(const WCHAR *s, GUID *id)
     return FALSE;
 }
 
+static int shared_memory_fd = -1;
+
+void map_kernel_shared_memory_block(void* block)
+{
+    void* test_out = mmap(block, SUBHEAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shared_memory_fd, ((size_t)block - 0x300000000000) );
+    TRACE("0x%08x MUST EQUAL 0xe821e31d\n", (unsigned int)*(unsigned int*)test_out );
+}
+
+static void CALLBACK map_new_kernel_shared_memory_block(ULONG_PTR arg1, ULONG_PTR arg2, ULONG_PTR arg3)
+{
+    map_kernel_shared_memory_block( (void*)arg1 );
+}
+
 static HANDLE get_device_manager(void)
 {
     static HANDLE device_manager;
@@ -252,6 +266,7 @@ static HANDLE get_device_manager(void)
     {
         SERVER_START_REQ( create_device_manager )
         {
+            req->new_mapping_handler = wine_server_client_ptr(map_new_kernel_shared_memory_block);
             req->access     = SYNCHRONIZE;
             req->attributes = 0;
             if (!wine_server_call( req )) handle = wine_server_ptr_handle( reply->handle );
@@ -654,6 +669,8 @@ static void unload_driver( struct wine_rb_entry *entry, void *context )
     CloseServiceHandle( (void *)service_handle );
 }
 
+extern int __wine_receive_fd( unsigned int *handle );
+
 /***********************************************************************
  *           wine_ntoskrnl_main_loop   (Not a Windows API)
  */
@@ -666,6 +683,70 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
     ULONG in_size = 4096, out_size = 0;
     void *in_buff = NULL;
     HANDLE handles[2];
+
+    void** mappings;
+    data_size_t internal_amount;
+    obj_handle_t dummy;
+
+
+    mappings = (void**) HeapAlloc(GetProcessHeap(), 0, sizeof(void*) * 10);
+    /* First set up kernel shared memory */
+    SERVER_START_REQ(init_shared_kernel_memory)
+    {
+        wine_server_set_reply( req,  mappings, sizeof(void*) * 10 );
+
+        if(!(status = wine_server_call( req )))
+        {
+            shared_memory_fd = __wine_receive_fd( &dummy );
+        }
+
+        internal_amount = reply->internal_size;
+    }
+    SERVER_END_REQ;
+    
+    if(status)
+    {
+        if(status == STATUS_BUFFER_OVERFLOW)
+        {
+            HeapFree(GetProcessHeap(), 0, mappings);
+
+            mappings = HeapAlloc(GetProcessHeap(), 0, internal_amount * sizeof(void*));
+
+            SERVER_START_REQ(init_shared_kernel_memory)
+            {
+                wine_server_add_data( req,  mappings, internal_amount * sizeof(void*));
+
+                if((status = wine_server_call( req )))
+                {
+                    shared_memory_fd = __wine_receive_fd( &dummy );
+                }
+            }
+            SERVER_END_REQ;
+
+            if(status)
+            {
+                ERR("Error getting shared memory mappings, exiting\n");
+                return STATUS_NO_MEMORY;
+            }
+        }
+        else
+        {
+            ERR("Error getting shared memory mappings, exiting\n");
+            return STATUS_NO_MEMORY;
+        }
+    }
+
+    if(shared_memory_fd == -1)
+    {
+        ERR("Error getting shared memory mappings exiting\n");
+        return STATUS_NO_MEMORY;
+    }
+
+    for(unsigned int i = 0; i < internal_amount; i++)
+    {
+        void* cur_block = *(mappings + i);
+        map_kernel_shared_memory_block(cur_block);
+    }
 
     request_thread = GetCurrentThreadId();
 
@@ -3089,9 +3170,9 @@ NTSTATUS WINAPI PsLookupThreadByThreadId(HANDLE ThreadId, PETHREAD *Thread)
         return STATUS_INVALID_CID;
     }
 
-    if(stat = NtQueryInformationThread(thread_handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL))
+    if((stat = NtQueryInformationThread(thread_handle, ThreadBasicInformation, &tbi, sizeof(tbi), NULL)))
     {
-        TRACE("error getting TEB from incoming ThreadId, error: %p\n", stat);
+        TRACE("error getting TEB from incoming ThreadId, error: 0x%08x\n", stat);
         *Thread = NULL;
         return stat;
     }

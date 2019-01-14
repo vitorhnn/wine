@@ -39,6 +39,8 @@
 #include "request.h"
 #include "process.h"
 
+static struct list manager_list = LIST_INIT(manager_list);
+
 /* IRP object */
 
 struct irp_call
@@ -84,9 +86,12 @@ static const struct object_ops irp_call_ops =
 
 struct device_manager
 {
-    struct object          obj;           /* object header */
-    struct list            devices;       /* list of devices */
-    struct list            requests;      /* list of pending irps across all devices */
+    struct object          obj;                     /* object header */
+    struct list            devices;                 /* list of devices */
+    struct list            requests;                /* list of pending irps across all devices */
+    struct thread          *map_handler_thread;     /* thread that runs the handling functions */
+    client_ptr_t           map_handler_loc;         /* location of handling function*/
+    struct list global_entry;
 };
 
 static void device_manager_dump( struct object *obj, int verbose );
@@ -615,9 +620,11 @@ static void device_manager_destroy( struct object *obj )
         struct device *device = LIST_ENTRY( ptr, struct device, entry );
         delete_device( device );
     }
+
+    list_remove( &manager->global_entry );
 }
 
-static struct device_manager *create_device_manager(void)
+static struct device_manager *create_device_manager( client_ptr_t map_handler_loc )
 {
     struct device_manager *manager;
 
@@ -626,6 +633,10 @@ static struct device_manager *create_device_manager(void)
         list_init( &manager->devices );
         list_init( &manager->requests );
     }
+
+    manager->map_handler_loc = map_handler_loc;
+    manager->map_handler_thread = current;
+
     return manager;
 }
 
@@ -633,13 +644,15 @@ static struct device_manager *create_device_manager(void)
 /* create a device manager */
 DECL_HANDLER(create_device_manager)
 {
-    struct device_manager *manager = create_device_manager();
+    struct device_manager *manager = create_device_manager(req->new_mapping_handler);
 
     if (manager)
     {
         reply->handle = alloc_handle( current->process, manager, req->access, req->attributes );
         release_object( manager );
     }
+
+    list_add_tail( &manager_list, &manager->global_entry);
 }
 
 
@@ -750,5 +763,26 @@ DECL_HANDLER(set_irp_result)
         set_irp_result( irp, req->status, get_req_data(), get_req_data_size(), req->size );
         close_handle( current->process, req->handle );  /* avoid an extra round-trip for close */
         release_object( irp );
+    }
+}
+
+void notify_new_mapping( void* mapping )
+{
+    struct device_manager *cur_manager;
+
+    LIST_FOR_EACH_ENTRY(cur_manager, &manager_list, struct device_manager, global_entry)
+    {
+        apc_call_t map_apc;
+
+        if(!cur_manager->map_handler_loc || !cur_manager->map_handler_thread)
+            continue;
+
+        map_apc.type = APC_USER;
+        map_apc.user.func = cur_manager->map_handler_loc;
+        map_apc.user.args[0] = (apc_param_t) mapping;
+        map_apc.user.args[1] = 0;
+        map_apc.user.args[2] = 0;
+
+        thread_queue_apc(NULL, cur_manager->map_handler_thread, NULL, &map_apc);
     }
 }

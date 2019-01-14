@@ -28,12 +28,25 @@
 #ifdef HAVE_SYS_MMAN_H
 # include <sys/mman.h>
 #endif
+#ifdef HAVE_SYS_SYSCALL_H
+#include <sys/syscall.h>
+#endif
+
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
+#include "windef.h"
+#include "winternl.h"
 
 #include "wine/list.h"
 
+#include "file.h"
+#include "thread.h"
+#include "request.h"
+
 #include "shmem.h"
 
-#define SUBHEAP_SIZE 0x7ffff /* 524 kilobytes*/
+static int shm_fd = -1;
+static off_t cur_shm_len = 0;
 
 /* malloc implementation based of glibc's malloc */
 
@@ -71,21 +84,57 @@ typedef struct tagSubHeap
 typedef struct tagHeap
 {
     struct list subheaps; /* list of subheaps, includes chunk headers + the used data */
+    int size;
 } Heap;
 
 void make_new_subheap(Heap* heap)
 {
-    SubHeap* new_sub = mmap(NULL, SUBHEAP_SIZE, PROT_READ | PROT_WRITE, 
-	                          MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    SubHeap* new_sub;
+
+    cur_shm_len += SUBHEAP_SIZE;
+    if(ftruncate(shm_fd, cur_shm_len) == -1)
+    {
+        fprintf(stderr, "Failed to truncate shared memory file\n");
+    }
+
+    new_sub = mmap( (void*) (0x300000000000 + (heap->size * SUBHEAP_SIZE)), SUBHEAP_SIZE, PROT_READ | PROT_WRITE,
+	                          MAP_SHARED | MAP_FIXED, shm_fd, 0 );
+    if(new_sub == MAP_FAILED)
+    {
+        fprintf(stderr, "Failed to map section of shared memory file\n");
+    }
     
     list_add_tail(&heap->subheaps, &new_sub->entry);
+    heap->size++;
     list_init(&new_sub->chunks);
     new_sub->remaining_space = SUBHEAP_SIZE - sizeof(SubHeap); /* remaining space excluding freed arenas*/
     new_sub->new_chunk_offset = 0;
     new_sub->magic = SubHeapMagic;
+
+    notify_new_mapping( new_sub );
 }
 
 static Heap global_heap = {LIST_INIT(global_heap.subheaps)};
+
+void init_shared_memory(void)
+{
+    #ifndef __x86_64__
+        return;
+    #endif
+
+    if(shm_fd == -1)
+    {
+        if( (shm_fd = syscall(SYS_memfd_create, "wineserver_ntoskrnl_shared", 0)) == -1)
+        {
+            fprintf(stderr, "Failed to initialize shared memory for ntoskrnl object manager.\n");
+            exit(1);
+        }
+    }else{
+        fprintf(stderr, "init_shared_memory: shared memory already initialized\n");
+    }
+
+    make_new_subheap(&global_heap);
+}
 
 void* shmalloc(size_t size)
 {
@@ -290,5 +339,48 @@ void shfree(void* p)
                 return;
             }
         }
+    }
+}
+
+DECL_HANDLER(init_shared_kernel_memory)
+{
+    /* redundant, just to be explicit */
+    #ifndef __x86_64__
+        set_error(STATUS_NOT_SUPPORTED);
+        return;
+    #endif
+
+    if(shm_fd == -1)
+    {
+        set_error(STATUS_NOT_SUPPORTED);
+        return;
+    }
+
+    reply->internal_size = global_heap.size;
+
+    /* send the current mappings */
+    if( get_reply_max_size() >= (global_heap.size * sizeof(SubHeap*)) )
+    {
+
+        /*SubHeap* mappings[global_heap.size];*/
+        SubHeap** mappings = mem_alloc(sizeof(SubHeap*) * global_heap.size);
+
+        SubHeap* cur_mapping;
+        int counter = 0;
+
+        LIST_FOR_EACH_ENTRY(cur_mapping, &global_heap.subheaps, SubHeap, entry)
+        {
+            mappings[counter] = cur_mapping;
+            counter++;
+        }
+
+        set_reply_data(mappings, sizeof(mappings));
+        
+        /* send file descriptor for the anon file */
+        send_client_fd( current->process, shm_fd, 0);
+
+        free(mappings);
+    }else{
+        set_error(STATUS_BUFFER_OVERFLOW);
     }
 }
