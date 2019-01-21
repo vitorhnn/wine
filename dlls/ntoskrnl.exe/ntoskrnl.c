@@ -726,20 +726,20 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
             if(status)
             {
                 ERR("Error getting shared memory mappings, exiting\n");
-                return STATUS_NO_MEMORY;
+                goto skip_shmem;
             }
         }
         else
         {
             ERR("Error getting shared memory mappings, exiting\n");
-            return STATUS_NO_MEMORY;
+            goto skip_shmem;
         }
     }
 
     if(shared_memory_fd == -1)
     {
         ERR("Error getting shared memory mappings exiting\n");
-        return STATUS_NO_MEMORY;
+        goto skip_shmem;
     }
 
     for(unsigned int i = 0; i < internal_amount; i++)
@@ -747,6 +747,8 @@ NTSTATUS CDECL wine_ntoskrnl_main_loop( HANDLE stop_event )
         void* cur_block = *(mappings + i);
         map_kernel_shared_memory_block(cur_block);
     }
+
+    skip_shmem:
 
     request_thread = GetCurrentThreadId();
 
