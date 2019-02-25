@@ -4111,6 +4111,11 @@ HRESULT CDECL wined3d_device_get_device_caps(const struct wined3d_device *device
     adapter->vertex_pipe->vp_get_caps(adapter, &vertex_caps);
     if (device->create_parms.flags & WINED3DCREATE_SOFTWARE_VERTEXPROCESSING)
         caps->MaxVertexShaderConst = adapter->d3d_info.limits.vs_uniform_count_swvp;
+    caps->MaxVertexBlendMatrixIndex = vertex_caps.max_vertex_blend_matrix_index;
+    if (!((device->create_parms.flags & WINED3DCREATE_SOFTWARE_VERTEXPROCESSING)
+            || ((device->create_parms.flags & WINED3DCREATE_MIXED_VERTEXPROCESSING)
+            && device->softwareVertexProcessing)))
+        caps->MaxVertexBlendMatrixIndex = min(caps->MaxVertexBlendMatrixIndex, 8);
     return hr;
 }
 
