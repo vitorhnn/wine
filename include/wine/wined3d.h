@@ -1605,6 +1605,7 @@ enum wined3d_shader_type
 #define WINED3D_MAX_CONSTS_I                                    16
 #define WINED3D_MAX_VS_CONSTS_F                                 256
 #define WINED3D_MAX_PS_CONSTS_F                                 224
+#define WINED3D_MAX_VS_CONSTS_F_SWVP                            8192
 
 struct wined3d_display_mode
 {
