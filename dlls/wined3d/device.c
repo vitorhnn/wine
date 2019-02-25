@@ -4089,10 +4089,21 @@ struct wined3d_texture * CDECL wined3d_device_get_texture(const struct wined3d_d
 
 HRESULT CDECL wined3d_device_get_device_caps(const struct wined3d_device *device, struct wined3d_caps *caps)
 {
+    const struct wined3d_adapter *adapter = device->wined3d->adapters[device->adapter->ordinal];
+    struct wined3d_vertex_caps vertex_caps;
+    HRESULT hr;
+
     TRACE("device %p, caps %p.\n", device, caps);
 
-    return wined3d_get_device_caps(device->wined3d, device->adapter->ordinal,
+    hr = wined3d_get_device_caps(device->wined3d, device->adapter->ordinal,
             device->create_parms.device_type, caps);
+    if (FAILED(hr))
+        return hr;
+
+    adapter->vertex_pipe->vp_get_caps(adapter, &vertex_caps);
+    if (device->create_parms.flags & WINED3DCREATE_SOFTWARE_VERTEXPROCESSING)
+        caps->MaxVertexShaderConst = adapter->d3d_info.limits.vs_uniform_count_swvp;
+    return hr;
 }
 
 HRESULT CDECL wined3d_device_get_display_mode(const struct wined3d_device *device, UINT swapchain_idx,
