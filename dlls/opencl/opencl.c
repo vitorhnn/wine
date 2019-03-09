@@ -482,7 +482,7 @@ cl_int WINAPI wine_clGetPlatformInfo(cl_platform_id platform, cl_platform_info p
     /* Hide all extensions.
      * TODO: Add individual extension support as needed.
      */
-    if (param_name == CL_PLATFORM_EXTENSIONS)
+/*    if (param_name == CL_PLATFORM_EXTENSIONS)
     {
         ret = CL_INVALID_VALUE;
 
@@ -499,7 +499,7 @@ cl_int WINAPI wine_clGetPlatformInfo(cl_platform_id platform, cl_platform_info p
             ret = CL_SUCCESS;
         }
     }
-    else
+    else*/
     {
         ret = pclGetPlatformInfo(platform, param_name, param_value_size, param_value, param_value_size_ret);
     }
@@ -534,7 +534,7 @@ cl_int WINAPI wine_clGetDeviceInfo(cl_device_id device, cl_device_info param_nam
     /* Hide all extensions.
      * TODO: Add individual extension support as needed.
      */
-    if (param_name == CL_DEVICE_EXTENSIONS)
+/*    if (param_name == CL_DEVICE_EXTENSIONS)
     {
         ret = CL_INVALID_VALUE;
 
@@ -551,7 +551,7 @@ cl_int WINAPI wine_clGetDeviceInfo(cl_device_id device, cl_device_info param_nam
             ret = CL_SUCCESS;
         }
     }
-    else
+    else*/
     {
         ret = pclGetDeviceInfo(device, param_name, param_value_size, param_value, param_value_size_ret);
     }
