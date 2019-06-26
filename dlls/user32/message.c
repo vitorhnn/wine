@@ -2299,7 +2299,7 @@ static BOOL process_rawinput_message( MSG *msg, const struct hardware_msg_data *
         rawinput->header.hDevice = WINE_MOUSE_HANDLE;
         rawinput->header.wParam  = 0;
 
-        rawinput->data.mouse.usFlags           = MOUSE_MOVE_RELATIVE;
+        rawinput->data.mouse.usFlags            = msg_data->rawinput.mouse.flags;
 
         rawinput->data.mouse.u.s.usButtonFlags = msg_data->rawinput.mouse.button_flags;
         rawinput->data.mouse.u.s.usButtonData = msg_data->rawinput.mouse.button_data;
