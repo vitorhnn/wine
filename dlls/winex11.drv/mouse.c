@@ -262,6 +262,8 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
 
     thread_data->x_rel_valuator.number = -1;
     thread_data->y_rel_valuator.number = -1;
+    thread_data->x_abs_valuator.number = -1;
+    thread_data->y_abs_valuator.number = -1;
 
     for (i = 0; i < n_valuators; i++)
     {
@@ -279,6 +281,16 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
         {
             valuator_data = &thread_data->y_rel_valuator;
         }
+        else if (class->label == x11drv_atom( Abs_X ) ||
+                 (!class->label && class->number == 0 && class->mode == XIModeAbsolute))
+        {
+            valuator_data = &thread_data->x_abs_valuator;
+        }
+        else if (class->label == x11drv_atom( Abs_Y ) ||
+                 (!class->label && class->number == 1 && class->mode == XIModeAbsolute))
+        {
+            valuator_data = &thread_data->y_abs_valuator;
+        }
 
         if (valuator_data) {
             valuator_data->number = class->number;
@@ -291,9 +303,9 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
 
 
 /***********************************************************************
- *              enable_xinput2
+ *              X11DRV_XInput2_Enable
  */
-static void enable_xinput2(void)
+void X11DRV_XInput2_Enable(void)
 {
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
     struct x11drv_thread_data *data = x11drv_thread_data();
@@ -324,8 +336,8 @@ static void enable_xinput2(void)
     mask.mask_len = sizeof(mask_bits);
     mask.deviceid = XIAllMasterDevices;
     memset( mask_bits, 0, sizeof(mask_bits) );
+    XISetMask( mask_bits, XI_DeviceChanged );
     XISetMask( mask_bits, XI_RawMotion );
-    XISetMask( mask_bits, XI_ButtonPress );
     XISetMask( mask_bits, XI_DeviceChanged );
 
     /* XInput 2.0 has a problematic behavior where master pointer will
@@ -357,15 +369,15 @@ static void enable_xinput2(void)
 }
 
 /***********************************************************************
- *              disable_xinput2
+ *              X11DRV_XInput2_Disable
  */
-static void disable_xinput2(void)
+void X11DRV_XInput2_Disable(void)
 {
 #ifdef HAVE_X11_EXTENSIONS_XINPUT2_H
     struct x11drv_thread_data *data = x11drv_thread_data();
     XIEventMask mask;
 
-    if (data->xi2_state != xi_enabled) return;
+    if (data->xi2_state < xi_enabled) return;
 
     TRACE( "disabling\n" );
     data->xi2_state = xi_disabled;
@@ -390,6 +402,21 @@ static void disable_xinput2(void)
 #endif
 }
 
+static void use_xinput2_path(void)
+{
+    struct x11drv_thread_data *thread_data = x11drv_thread_data();
+
+    if (thread_data->xi2_state == xi_enabled)
+        thread_data->xi2_state = xi_extra;
+}
+
+static void disable_xinput2_path(void)
+{
+    struct x11drv_thread_data *thread_data = x11drv_thread_data();
+
+    if (thread_data->xi2_state == xi_extra)
+        thread_data->xi2_state = xi_enabled;
+}
 
 /***********************************************************************
  *		grab_clipping_window
@@ -428,9 +455,9 @@ static BOOL grab_clipping_window( const RECT *clip )
     }
 
     /* enable XInput2 unless we are already clipping */
-    if (!data->clip_hwnd) enable_xinput2();
+    if (!data->clip_hwnd) use_xinput2_path();
 
-    if (data->xi2_state != xi_enabled)
+    if (data->xi2_state < xi_extra)
     {
         WARN( "XInput2 not supported, refusing to clip to %s\n", wine_dbgstr_rect(clip) );
         DestroyWindow( msg_hwnd );
@@ -458,7 +485,7 @@ static BOOL grab_clipping_window( const RECT *clip )
 
     if (!clipping_cursor)
     {
-        disable_xinput2();
+        disable_xinput2_path();
         DestroyWindow( msg_hwnd );
         return FALSE;
     }
@@ -508,6 +535,7 @@ void reset_clipping_window(void)
  */
 void retry_grab_clipping_window(void)
 {
+    use_xinput2_path();
     if (clipping_cursor)
         ClipCursor( &clip_rect );
     else if (last_clip_refused && GetForegroundWindow() == last_clip_foreground_window)
@@ -539,7 +567,7 @@ LRESULT clip_cursor_notify( HWND hwnd, HWND prev_clip_hwnd, HWND new_clip_hwnd )
         TRACE( "clip hwnd reset from %p\n", hwnd );
         data->clip_hwnd = 0;
         data->clip_reset = GetTickCount();
-        disable_xinput2();
+        disable_xinput2_path();
         DestroyWindow( hwnd );
     }
     else if (hwnd == GetForegroundWindow())  /* request to clip */
@@ -1801,16 +1829,20 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
 {
     XIRawEvent *event = xev->data;
     const double *values = event->valuators.values;
+    const double *raw_values = event->raw_values;
     RECT virtual_rect;
     INPUT input;
+    RAWINPUT raw_input;
     int i;
-    double dx = 0, dy = 0, val;
+    double dx = 0, dy = 0, raw_x = 0, raw_y = 0, val, raw_val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
-    struct x11drv_valuator_data *x_rel, *y_rel;
+    struct x11drv_valuator_data *x_rel, *y_rel, *x_abs, *y_abs;
 
-    if (thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) return FALSE;
+    if ((thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) &&
+        (thread_data->x_abs_valuator.number < 0 || thread_data->y_abs_valuator.number < 0) return FALSE;
+
     if (!event->valuators.mask_len) return FALSE;
-    if (thread_data->xi2_state != xi_enabled) return FALSE;
+    if (thread_data->xi2_state < xi_enabled) return FALSE;
 
     if (xinput2_version_major == 2 && xinput2_version_minor == 0)
     {
@@ -1841,7 +1873,10 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
 
     x_rel = &thread_data->x_rel_valuator;
     y_rel = &thread_data->y_rel_valuator;
+    x_abs = &thread_data->x_abs_valuator;
+    y_abs = &thread_data->y_abs_valuator;
 
+    input.type = INPUT_MOUSE;
     input.u.mi.mouseData   = 0;
     input.u.mi.dwFlags     = MOUSEEVENTF_MOVE;
     input.u.mi.time        = EVENT_x11_time_to_win32_time( event->time );
@@ -1849,18 +1884,31 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     input.u.mi.dx          = 0;
     input.u.mi.dy          = 0;
 
+    raw_input.header.dwType = RIM_TYPEMOUSE;
+    raw_input.data.mouse.u.usButtonFlags = 0;
+    raw_input.data.mouse.u.usButtonData = 0;
+    raw_input.data.mouse.ulExtraInformation = 0;
+    raw_input.data.mouse.ulRawButtons = 0;
+    raw_input.data.mouse.usFlags = 0;
+    raw_input.data.mouse.lLastX = 0;
+    raw_input.data.mouse.lLastY = 0;
+
     virtual_rect = get_virtual_screen_rect();
 
-    for (i = 0; i <= max ( x_rel->number, y_rel->number ); i++)
+    for (i = 0; i <= max(max(max( x_abs->number, y_abs->number), x_rel->number), y_rel->number); i++)
     {
         if (!XIMaskIsSet( event->valuators.mask, i )) continue;
         val = *values++;
+        raw_val = *raw_values++;
         if (i == x_rel->number)
         {
             input.u.mi.dx = dx = val;
             if (x_rel->min < x_rel->max)
                 input.u.mi.dx = val * (virtual_rect.right - virtual_rect.left)
                                     / (x_rel->max - x_rel->min);
+
+            raw_input.data.mouse.usFlags = MOUSE_MOVE_RELATIVE;
+            raw_input.data.mouse.lLastX = raw_x = raw_val;
         }
         if (i == y_rel->number)
         {
@@ -1868,6 +1916,19 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
             if (y_rel->min < y_rel->max)
                 input.u.mi.dy = val * (virtual_rect.bottom - virtual_rect.top)
                                     / (y_rel->max - y_rel->min);
+
+            raw_input.data.mouse.usFlags = MOUSE_MOVE_RELATIVE;
+            raw_input.data.mouse.lLastY = raw_y = raw_val;
+        }
+        if (i == x_abs->number)
+        {
+            raw_input.data.mouse.usFlags = MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP;
+            raw_input.data.mouse.lLastX = raw_x = raw_val * (65536 / (x_abs->max - x_abs->min));
+        }
+        if (i == y_abs->number)
+        {
+            raw_input.data.mouse.usFlags = MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP;
+            raw_input.data.mouse.lLastY = raw_y = raw_val * (65536 / (y_abs->max - y_abs->min));
         }
     }
 
@@ -1877,10 +1938,16 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
         return FALSE;
     }
 
-    TRACE( "pos %d,%d (event %f,%f)\n", input.u.mi.dx, input.u.mi.dy, dx, dy );
+    if (thread_data->xi2_state == xi_extra)
+    {
+        TRACE( "pos %d,%d (event %f,%f)\n", input.u.mi.dx, input.u.mi.dy, dx, dy );
+        __wine_send_input( 0, &input );
+    }
 
-    input.type = INPUT_MOUSE;
-    __wine_send_input( 0, &input );
+    TRACE("raw %s event %f,%f\n",
+        raw_input.data.mouse.usFlags ? "absolute" : "relative", raw_x, raw_y);
+    __wine_send_raw_input( &raw_input );
+
     return TRUE;
 }
 
