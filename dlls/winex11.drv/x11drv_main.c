@@ -122,6 +122,7 @@ static const char * const atom_names[NB_XATOMS - FIRST_XATOM] =
     "Rel Y",
     "Abs X",
     "Abs Y",
+    "Rel Vert Scroll",
     "WM_PROTOCOLS",
     "WM_DELETE_WINDOW",
     "WM_STATE",

@@ -264,12 +264,21 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
     thread_data->y_rel_valuator.number = -1;
     thread_data->x_abs_valuator.number = -1;
     thread_data->y_abs_valuator.number = -1;
+    thread_data->wheel_valuator.number = -1;
+
+    thread_data->xi2_wheel_multiplier = 0;
 
     for (i = 0; i < n_valuators; i++)
     {
         XIValuatorClassInfo *class = (XIValuatorClassInfo *)valuators[i];
+        XIScrollClassInfo *scroll_class = (XIScrollClassInfo *)valuators[i];
         struct x11drv_valuator_data *valuator_data = NULL;
 
+        if (valuators[i]->type == XIScrollClass)
+        {
+            if (scroll_class->scroll_type == XIScrollTypeVertical)
+                thread_data->xi2_wheel_multiplier = -WHEEL_DELTA / scroll_class->increment;
+        }
         if (valuators[i]->type != XIValuatorClass) continue;
         if (class->label == x11drv_atom( Rel_X ) ||
             (!class->label && class->number == 0 && class->mode == XIModeRelative))
@@ -290,6 +299,11 @@ static void update_relative_valuators(XIAnyClassInfo **valuators, int n_valuator
                  (!class->label && class->number == 1 && class->mode == XIModeAbsolute))
         {
             valuator_data = &thread_data->y_abs_valuator;
+        }
+        else if (class->label == x11drv_atom( Rel_Vert_Scroll ) ||
+                 (!class->label && class->number == 3 && class->mode == XIModeRelative))
+        {
+            valuator_data = &thread_data->wheel_valuator;
         }
 
         if (valuator_data) {
@@ -339,6 +353,8 @@ void X11DRV_XInput2_Enable(void)
     XISetMask( mask_bits, XI_DeviceChanged );
     XISetMask( mask_bits, XI_RawMotion );
     XISetMask( mask_bits, XI_DeviceChanged );
+    XISetMask( mask_bits, XI_RawButtonPress );
+    XISetMask( mask_bits, XI_RawButtonRelease );
 
     /* XInput 2.0 has a problematic behavior where master pointer will
      * not send raw events to the root window whenever a grab is active
@@ -396,6 +412,7 @@ void X11DRV_XInput2_Disable(void)
     pXIFreeDeviceInfo( data->xi2_devices );
     data->x_rel_valuator.number = -1;
     data->y_rel_valuator.number = -1;
+    data->wheel_valuator.number = -1;
     data->xi2_devices = NULL;
     data->xi2_core_pointer = 0;
     data->xi2_current_slave = 0;
@@ -1834,12 +1851,13 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     INPUT input;
     RAWINPUT raw_input;
     int i;
-    double dx = 0, dy = 0, raw_x = 0, raw_y = 0, val, raw_val;
+    double dx = 0, dy = 0, raw_x = 0, raw_y = 0, raw_dwheel = 0, val, raw_val;
     struct x11drv_thread_data *thread_data = x11drv_thread_data();
-    struct x11drv_valuator_data *x_rel, *y_rel, *x_abs, *y_abs;
+    struct x11drv_valuator_data *x_rel, *y_rel, *x_abs, *y_abs, *wheel;
 
     if ((thread_data->x_rel_valuator.number < 0 || thread_data->y_rel_valuator.number < 0) &&
-        (thread_data->x_abs_valuator.number < 0 || thread_data->y_abs_valuator.number < 0) return FALSE;
+        (thread_data->x_abs_valuator.number < 0 || thread_data->y_abs_valuator.number < 0) &&
+         thread_data->wheel_valuator.number < 0) return FALSE;
 
     if (!event->valuators.mask_len) return FALSE;
     if (thread_data->xi2_state < xi_enabled) return FALSE;
@@ -1875,6 +1893,7 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
     y_rel = &thread_data->y_rel_valuator;
     x_abs = &thread_data->x_abs_valuator;
     y_abs = &thread_data->y_abs_valuator;
+    wheel = &thread_data->wheel_valuator;
 
     input.type = INPUT_MOUSE;
     input.u.mi.mouseData   = 0;
@@ -1895,7 +1914,7 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
 
     virtual_rect = get_virtual_screen_rect();
 
-    for (i = 0; i <= max(max(max( x_abs->number, y_abs->number), x_rel->number), y_rel->number); i++)
+    for (i = 0; i <= max(max(max(max(x_abs->number, y_abs->number), x_rel->number), y_rel->number), wheel->number); i++)
     {
         if (!XIMaskIsSet( event->valuators.mask, i )) continue;
         val = *values++;
@@ -1930,6 +1949,10 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
             raw_input.data.mouse.usFlags = MOUSE_MOVE_ABSOLUTE | MOUSE_VIRTUAL_DESKTOP;
             raw_input.data.mouse.lLastY = raw_y = raw_val * (65536 / (y_abs->max - y_abs->min));
         }
+        if (i == wheel->number)
+        {
+            raw_dwheel = raw_val * thread_data->xi2_wheel_multiplier;
+        }
     }
 
     if (broken_rawevents && is_old_motion_event( xev->serial ))
@@ -1944,9 +1967,66 @@ static BOOL X11DRV_RawMotion( XGenericEventCookie *xev )
         __wine_send_input( 0, &input );
     }
 
-    TRACE("raw %s event %f,%f\n",
-        raw_input.data.mouse.usFlags ? "absolute" : "relative", raw_x, raw_y);
+    if (raw_dwheel)
+    {
+        raw_input.data.mouse.u.usButtonFlags = RI_MOUSE_WHEEL;
+        raw_input.data.mouse.u.usButtonData  = raw_dwheel;
+    }
+
+    TRACE("raw %s event %f,%f + %f\n",
+        raw_input.data.mouse.usFlags ? "absolute" : "relative", raw_x, raw_y, raw_dwheel);
     __wine_send_raw_input( &raw_input );
+
+    return TRUE;
+}
+
+/***********************************************************************
+ *           X11DRV_RawButton
+ */
+static BOOL X11DRV_RawButton( XGenericEventCookie *xev )
+{
+    RAWINPUT ri;
+
+    static const unsigned short raw_button_press_flags[] = {
+        0,                              /* 0 = unused */
+        RI_MOUSE_LEFT_BUTTON_DOWN,      /* 1 */
+        RI_MOUSE_MIDDLE_BUTTON_DOWN,    /* 2 */
+        RI_MOUSE_RIGHT_BUTTON_DOWN,     /* 3 */
+        0,                              /* 4 = unknown */
+        0,                              /* 5 = unknown */
+        0,                              /* 6 = unknown */
+        0,                              /* 7 = unknown */
+        RI_MOUSE_BUTTON_4_DOWN,         /* 8 */
+        RI_MOUSE_BUTTON_5_DOWN          /* 9 */
+    };
+
+    static const unsigned short raw_button_release_flags[] = {
+        0,                            /* 0 = unused */
+        RI_MOUSE_LEFT_BUTTON_UP,      /* 1 */
+        RI_MOUSE_MIDDLE_BUTTON_UP,    /* 2 */
+        RI_MOUSE_RIGHT_BUTTON_UP,     /* 3 */
+        0,                            /* 4 = unknown */
+        0,                            /* 5 = unknown */
+        0,                            /* 6 = unknown */
+        0,                            /* 7 = unknown */
+        RI_MOUSE_BUTTON_4_UP,         /* 8 */
+        RI_MOUSE_BUTTON_5_UP          /* 9 */
+    };
+
+    int detail = ((XIRawEvent*)xev->data)->detail;
+    if (detail > 9) return TRUE;
+
+    ri.header.dwType = RIM_TYPEMOUSE;
+    ri.data.mouse.u.usButtonFlags = xev->evtype == XI_RawButtonPress ? raw_button_press_flags[detail] : raw_button_release_flags[detail] ;
+    ri.data.mouse.u.usButtonData = 0;
+    ri.data.mouse.lLastX = 0;
+    ri.data.mouse.lLastY = 0;
+    ri.data.mouse.usFlags = 0;
+    ri.data.mouse.ulRawButtons = 0;
+    ri.data.mouse.ulExtraInformation = 0;
+
+    if (ri.data.mouse.u.usButtonFlags)
+        __wine_send_raw_input( &ri );
 
     return TRUE;
 }
@@ -2014,6 +2094,11 @@ BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *xev )
         break;
     case XI_RawMotion:
         ret = X11DRV_RawMotion( event );
+        break;
+    case XI_RawButtonPress:
+        /* fall through */
+    case XI_RawButtonRelease:
+        ret = X11DRV_RawButton( event );
         break;
 
     default:
