@@ -2442,7 +2442,9 @@ DECL_HANDLER(send_rawinput_message)
         if ((device = current->process->rawinput_mouse))
         {
             struct thread *thread = device->target ? get_window_thread( device->target ) : NULL;
-            if ((current->queue->input != desktop->foreground_input) || (thread && thread != current))
+            if ((current->queue->input != desktop->foreground_input && !(device->flags & RIDEV_INPUTSINK))
+             || (thread && thread != current)
+             || (!thread && device->flags & RIDEV_INPUTSINK))
                 goto done;
 
             if (!(msg = alloc_hardware_message( 0, source, 0 ))) goto done;
