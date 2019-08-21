@@ -406,6 +406,8 @@ void X11DRV_XInput2_Enable(void)
     {
         XISetMask( mask_bits, XI_RawButtonPress );
         XISetMask( mask_bits, XI_RawButtonRelease );
+        XISetMask( mask_bits, XI_RawKeyPress );
+        XISetMask( mask_bits, XI_RawKeyRelease );
         data->xi2_rawinput_only = TRUE;
     }
     else
@@ -2067,6 +2069,10 @@ BOOL X11DRV_GenericEvent( HWND hwnd, XEvent *xev )
     case XI_RawButtonPress:
     case XI_RawButtonRelease:
         ret = X11DRV_RawButtonEvent( event );
+        break;
+    case XI_RawKeyPress:
+    case XI_RawKeyRelease:
+        ret = X11DRV_RawKeyEvent( event );
         break;
 
     default:
