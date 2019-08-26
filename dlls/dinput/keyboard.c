@@ -107,17 +107,65 @@ static int KeyboardCallback( LPDIRECTINPUTDEVICE8A iface, WPARAM wparam, LPARAM 
 {
     SysKeyboardImpl *This = impl_from_IDirectInputDevice8A(iface);
     int dik_code, ret = This->base.dwCoopLevel & DISCL_EXCLUSIVE;
-    KBDLLHOOKSTRUCT *hook = (KBDLLHOOKSTRUCT *)lparam;
     BYTE new_diks;
+    DWORD vkey_code, scan_code;
+    BOOL is_key_ext, is_key_up;
 
     if (wparam != WM_KEYDOWN && wparam != WM_KEYUP &&
-        wparam != WM_SYSKEYDOWN && wparam != WM_SYSKEYUP)
+        wparam != WM_SYSKEYDOWN && wparam != WM_SYSKEYUP &&
+        wparam != RIM_INPUT && wparam != RIM_INPUTSINK)
         return 0;
 
-    TRACE("(%p) wp %08lx, lp %08lx, vk %02x, scan %02x\n",
-          iface, wparam, lparam, hook->vkCode, hook->scanCode);
+    if (wparam == RIM_INPUT || wparam == RIM_INPUTSINK)
+    {
+        RAWINPUTHEADER raw_header;
+        RAWINPUT raw_input;
+        UINT size;
 
-    switch (hook->vkCode)
+        TRACE("(%p) wp %08lx, lp %08lx\n", iface, wparam, lparam);
+
+        size = sizeof(raw_header);
+        if (GetRawInputData( (HRAWINPUT)lparam, RID_HEADER, &raw_header, &size, sizeof(RAWINPUTHEADER) ) != sizeof(raw_header))
+        {
+            WARN( "Unable to read raw input data header\n" );
+            return 0;
+        }
+
+        if (raw_header.dwType != RIM_TYPEKEYBOARD)
+            return 0;
+
+        if (raw_header.dwSize > sizeof(raw_input))
+        {
+            WARN( "Unexpected size for keyboard raw input data\n" );
+            return 0;
+        }
+
+        size = raw_header.dwSize;
+        if (GetRawInputData( (HRAWINPUT)lparam, RID_INPUT, &raw_input, &size, sizeof(RAWINPUTHEADER) ) != raw_header.dwSize )
+        {
+            WARN( "Unable to read raw input data\n" );
+            return 0;
+        }
+
+        vkey_code = raw_input.data.keyboard.VKey;
+        scan_code = raw_input.data.keyboard.MakeCode;
+        is_key_ext = (raw_input.data.keyboard.Flags & RI_KEY_E0);
+        is_key_up = (raw_input.data.keyboard.Flags & RI_KEY_BREAK);
+    }
+    else
+    {
+        KBDLLHOOKSTRUCT *hook = (KBDLLHOOKSTRUCT *)lparam;
+
+        vkey_code = hook->vkCode;
+        scan_code = hook->scanCode;
+        is_key_ext = (hook->flags & LLKHF_EXTENDED);
+        is_key_up = (hook->flags & LLKHF_UP);
+    }
+
+    TRACE("(%p) wp %08lx, lp %08lx, vk %02x, scan %02x\n",
+          iface, wparam, lparam, vkey_code, scan_code);
+
+    switch (vkey_code)
     {
         /* R-Shift is special - it is an extended key with separate scan code */
         case VK_RSHIFT  : dik_code = DIK_RSHIFT; break;
@@ -125,10 +173,10 @@ static int KeyboardCallback( LPDIRECTINPUTDEVICE8A iface, WPARAM wparam, LPARAM 
         case VK_NUMLOCK : dik_code = DIK_NUMLOCK; break;
         case VK_SUBTRACT: dik_code = DIK_SUBTRACT; break;
         default:
-            dik_code = map_dik_code(hook->scanCode & 0xff, hook->vkCode, This->subtype);
-            if (hook->flags & LLKHF_EXTENDED) dik_code |= 0x80;
+            dik_code = map_dik_code(scan_code & 0xff, vkey_code, This->subtype);
+            if (is_key_ext) dik_code |= 0x80;
     }
-    new_diks = hook->flags & LLKHF_UP ? 0 : 0x80;
+    new_diks = is_key_up ? 0 : 0x80;
 
     /* returns now if key event already known */
     if (new_diks == This->DInputKeyState[dik_code])
@@ -294,6 +342,13 @@ static SysKeyboardImpl *alloc_device(REFGUID rguid, IDirectInputImpl *dinput)
     EnterCriticalSection(&dinput->crit);
     list_add_tail(&dinput->devices_list, &newDevice->base.entry);
     LeaveCriticalSection(&dinput->crit);
+
+    if (dinput->dwVersion >= 0x800)
+    {
+        newDevice->base.use_raw_input = TRUE;
+        newDevice->base.raw_device.usUsagePage = 1; /* HID generic device page */
+        newDevice->base.raw_device.usUsage = 6; /* HID generic keyboard */
+    }
 
     return newDevice;
 
