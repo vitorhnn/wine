@@ -3382,3 +3382,27 @@ DECL_HANDLER(esync_msgwait)
     if (current->process->idle_event && !(queue->wake_mask & QS_SMRESULT))
         set_event( current->process->idle_event );
 }
+
+DECL_HANDLER(get_rawinput_devices)
+{
+    unsigned int device_count = list_count(&current->process->rawinput_devices);
+    struct rawinput_device *devices;
+    struct rawinput_device_entry *e;
+    unsigned int i;
+
+    reply->device_count = device_count;
+    if (get_reply_max_size() / sizeof (*devices) < device_count)
+        return;
+
+    if (!(devices = mem_alloc( device_count * sizeof (*devices) )))
+    {
+        set_error( STATUS_NO_MEMORY );
+        return;
+    }
+
+    i = 0;
+    LIST_FOR_EACH_ENTRY( e, &current->process->rawinput_devices, struct rawinput_device_entry, entry )
+        devices[i++] = e->device;
+
+    set_reply_data_ptr( devices, device_count * sizeof (*devices) );
+}
