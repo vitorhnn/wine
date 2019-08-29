@@ -19,6 +19,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+#include "wine/port.h"
+
 #include <stdarg.h>
 
 #include "ntstatus.h"
@@ -27,6 +30,7 @@
 #include "winternl.h"
 #include "ddk/wdm.h"
 #include "wine/svcctl.h"
+#include "wine/unicode.h"
 #include "wine/debug.h"
 #include "wine/heap.h"
 
@@ -66,7 +70,7 @@ static DWORD device_handler( DWORD ctrl, const WCHAR *driver_name )
     DWORD result = NO_ERROR;
     WCHAR *str;
 
-    if (!(str = heap_alloc( sizeof(servicesW) + lstrlenW(driver_name)*sizeof(WCHAR) )))
+    if (!(str = heap_alloc( sizeof(servicesW) + strlenW(driver_name)*sizeof(WCHAR) )))
         return STATUS_NO_MEMORY;
 
     lstrcpyW( str, servicesW );
