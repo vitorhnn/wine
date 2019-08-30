@@ -1276,6 +1276,30 @@ char * WINAPI RtlIpv6AddressToStringA(const IN6_ADDR *address, char *str)
 }
 
 /***********************************************************************
+ * RtlIpv6AddressToStringExW [NTDLL.@]
+ */
+NTSTATUS WINAPI RtlIpv6AddressToStringExW(const IN6_ADDR *address, ULONG scope, USHORT port, WCHAR *str, ULONG *len)
+{
+    char cstr[64];
+    NTSTATUS ret = RtlIpv6AddressToStringExA(address, scope, port, cstr, len);
+    if (SUCCEEDED(ret)) RtlMultiByteToUnicodeN(str, *len * sizeof(WCHAR), NULL, cstr, *len);
+    return ret;
+}
+
+/***********************************************************************
+ * RtlIpv6AddressToStringW [NTDLL.@]
+ */
+WCHAR * WINAPI RtlIpv6AddressToStringW(const IN6_ADDR *address, WCHAR *str)
+{
+    ULONG len = 46;
+    if (!address || !str) return str;
+    str[45] = 0;
+    if (FAILED(RtlIpv6AddressToStringExW(address, 0, 0, str, &len)))
+        return str;
+    return str + len - 1;
+}
+
+/***********************************************************************
  * get_pointer_obfuscator (internal)
  */
 static DWORD_PTR get_pointer_obfuscator( void )
