@@ -1758,6 +1758,7 @@ static int queue_rawinput_message( struct process* process, void* user )
     struct thread *thread = NULL, *foreground = NULL;
     struct message *msg;
     struct hardware_msg_data *msg_data;
+    int wparam = RIM_INPUT;
 
     if (raw_msg->data.rawinput.type == RIM_TYPEMOUSE)
         device = process->rawinput_mouse;
@@ -1777,10 +1778,12 @@ static int queue_rawinput_message( struct process* process, void* user )
         process != thread->process)
         goto done;
 
-    /* FIXME: Implement RIDEV_INPUTSINK */
     if (!(foreground = get_window_thread( desktop->foreground_input->active )) ||
         thread->process != foreground->process)
-        goto done;
+    {
+        if (!(device->flags & RIDEV_INPUTSINK)) goto done;
+        wparam = RIM_INPUTSINK;
+    }
 
     if (!(msg = alloc_hardware_message( raw_msg->data.info, raw_msg->source, raw_msg->time, raw_msg->extra_len )))
         goto done;
@@ -1788,7 +1791,7 @@ static int queue_rawinput_message( struct process* process, void* user )
 
     msg->win    = device->target;
     msg->msg    = WM_INPUT;
-    msg->wparam = RIM_INPUT;
+    msg->wparam = wparam;
     msg->lparam = 0;
 
     memcpy( msg_data, &raw_msg->data, sizeof(*msg_data) );
