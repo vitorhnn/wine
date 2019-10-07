@@ -34,6 +34,8 @@
 #include "wine/debug.h"
 #include "wine/heap.h"
 
+#include "winedevice_private.h"
+
 WINE_DEFAULT_DEBUG_CHANNEL(winedevice);
 
 static const WCHAR servicesW[] = {'\\','R','e','g','i','s','t','r','y',
@@ -137,7 +139,9 @@ static void WINAPI ServiceMain( DWORD argc, LPWSTR *argv )
     set_service_status( service_handle, SERVICE_RUNNING,
                         SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN );
 
+    initialize_vm();
     wine_ntoskrnl_main_loop( stop_event );
+    shutdown_vm();
 
     TRACE( "service group %s stopped\n", wine_dbgstr_w(service_group) );
     set_service_status( service_handle, SERVICE_STOPPED, 0 );

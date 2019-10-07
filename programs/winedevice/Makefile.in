@@ -1,6 +1,9 @@
 MODULE    = winedevice.exe
 APPMODE   = -mwindows -municode
 IMPORTS   = advapi32 ntoskrnl
+EXTRALIBS = $(PTHREAD_LIBS) $(UNICORN_LIBS)
+EXTRACFLAGS = -fshort-wchar
 
 C_SRCS = \
-	device.c
+	device.c \
+	vm.c
