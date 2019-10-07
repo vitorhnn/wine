@@ -83,6 +83,7 @@ AC_ARG_WITH(sdl,       AS_HELP_STRING([--without-sdl],[do not use SDL]))
 AC_ARG_WITH(tiff,      AS_HELP_STRING([--without-tiff],[do not use TIFF]))
 AC_ARG_WITH(udev,      AS_HELP_STRING([--without-udev],[do not use udev (plug and play support)]))
 AC_ARG_WITH(unwind,    AS_HELP_STRING([--without-unwind],[do not use the libunwind library (exception handling)]))
+AC_ARG_WITH(unicorn,   AS_HELP_STRING([--without-unicorn],[do not use unicorn (ntoskrnl VM support)]))
 AC_ARG_WITH(v4l2,      AS_HELP_STRING([--without-v4l2],[do not use v4l2 (video capture)]))
 AC_ARG_WITH(vkd3d,     AS_HELP_STRING([--without-vkd3d],[do not use vkd3d (Direct3D 12 support)]))
 AC_ARG_WITH(vulkan,    AS_HELP_STRING([--without-vulkan],[do not use Vulkan]))
@@ -1996,6 +1997,22 @@ fi
 WINE_NOTICE_WITH(vkd3d,[test "x$ac_cv_lib_soname_vkd3d" = "x"],
                  [vkd3d ${notice_platform}development files not found (or too old), Direct3D 12 won't be supported.])
 test "x$ac_cv_lib_soname_vkd3d" != "x" || enable_d3d12=${enable_d3d12:-no}
+
+if test "x$enable_win64" = "xyes"
+then
+    dnl **** Check for unicorn ****
+    if test "x$with_unicorn" != "xno"
+    then
+        WINE_PACKAGE_FLAGS(UNICORN,[libunicorn],[-lunicorn],,,
+            [AC_CHECK_HEADERS(unicorn/unicorn.h,
+                [AC_CHECK_LIB(unicorn,uc_open,
+                    AC_DEFINE(HAVE_UNICORN,1,[Define to 1 if you have the `unicorn' library (-lunicorn).]),
+                    [UNICORN_LIBS=""],[$UNICORN_LIBS $PTHREAD_LIBS -lm])],
+                [UNICORN_LIBS=""])])
+    fi
+    WINE_NOTICE_WITH(unicorn,[test "x$UNICORN_LIBS" = "x"],
+                    [unicorn ${notice_platform}development files not found, an ntoskrnl VM won't be supported.])
+fi
 
 dnl **** Check for gcc specific options ****
 
