@@ -1,0 +1,1 @@
+@ cdecl __wine_ntoskrnl_entry()

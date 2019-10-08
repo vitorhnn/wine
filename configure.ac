@@ -1059,7 +1059,6 @@ then
         WINE_TRY_CROSSCFLAGS([-fno-strict-aliasing])
         dnl clang needs to be told to fail on unknown options
         WINE_TRY_CROSSCFLAGS([-Werror=unknown-warning-option],[CFLAGS="$CFLAGS -Werror=unknown-warning-option"])
-        WINE_TRY_CROSSCFLAGS([-Wdeclaration-after-statement])
         WINE_TRY_CROSSCFLAGS([-Wempty-body])
         WINE_TRY_CROSSCFLAGS([-Wignored-qualifiers])
         WINE_TRY_CROSSCFLAGS([-Wpacked-not-aligned],[EXTRACROSSCFLAGS="$EXTRACROSSCFLAGS -Wno-packed-not-aligned"])
@@ -2044,7 +2043,6 @@ then
   saved_CFLAGS=$CFLAGS
   WINE_TRY_CFLAGS([-Werror=unknown-warning-option],[CFLAGS="$CFLAGS -Werror=unknown-warning-option"])
   WINE_TRY_CFLAGS([-Werror=unused-command-line-argument],[CFLAGS="$CFLAGS -Werror=unused-command-line-argument"])
-  WINE_TRY_CFLAGS([-Wdeclaration-after-statement])
   WINE_TRY_CFLAGS([-Wempty-body])
   WINE_TRY_CFLAGS([-Wignored-qualifiers])
   WINE_TRY_CFLAGS([-Wpacked-not-aligned],[EXTRACFLAGS="$EXTRACFLAGS -Wno-packed-not-aligned"])
@@ -3765,6 +3763,7 @@ WINE_CONFIG_MAKEFILE(dlls/vdmdbg)
 WINE_CONFIG_MAKEFILE(dlls/ver.dll16,enable_win16)
 WINE_CONFIG_MAKEFILE(dlls/version)
 WINE_CONFIG_MAKEFILE(dlls/version/tests)
+WINE_CONFIG_MAKEFILE(dlls/virt-ntoskrnl.exe)
 WINE_CONFIG_MAKEFILE(dlls/virtdisk)
 WINE_CONFIG_MAKEFILE(dlls/virtdisk/tests)
 WINE_CONFIG_MAKEFILE(dlls/vmm.vxd,enable_win16)

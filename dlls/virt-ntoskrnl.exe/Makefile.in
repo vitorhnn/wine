@@ -1,0 +1,6 @@
+MODULE = ntoskrnl.exe
+
+EXTRADLLFLAGS = -mno-cygwin -nodefaultlibs -nostartfiles
+
+C_SRCS = \
+    ntoskrnl.c
