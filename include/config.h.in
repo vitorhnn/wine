@@ -1187,6 +1187,9 @@
 /* Define to 1 if you have the `udev' library (-ludev). */
 #undef HAVE_UDEV
 
+/* Define to 1 if you have the `unicorn` library (-lunicorn) */
+#undef HAVE_UNICORN
+
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
