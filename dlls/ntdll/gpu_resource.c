@@ -87,16 +87,40 @@ NTSTATUS CDECL __wine_get_gpu_resource_fd(HANDLE handle, int *fd, int *needs_clo
     return ret;
 }
 
-/* gets KMT handle */
-NTSTATUS CDECL __wine_get_gpu_resource_info(HANDLE handle, HANDLE *kmt_handle)
+/* gets KMT handle and userdata */
+NTSTATUS CDECL __wine_get_gpu_resource_info(HANDLE handle, HANDLE *kmt_handle, void *user_data_buf, unsigned int *user_data_len)
 {
     NTSTATUS ret;
+    BOOL get_user_data = user_data_buf && user_data_len;
 
     SERVER_START_REQ(query_gpu_resource)
     {
         req->handle = wine_server_obj_handle( handle );
+        if (get_user_data)
+            wine_server_set_reply(req, user_data_buf, *user_data_len);
         if (!(ret = wine_server_call(req)))
-            *kmt_handle = wine_server_ptr_handle( reply->kmt_handle );
+        {
+            if (kmt_handle)
+                *kmt_handle = wine_server_ptr_handle( reply->kmt_handle );
+            if (user_data_len)
+                *user_data_len = wine_server_reply_size(reply);
+        }
+    }
+    SERVER_END_REQ;
+
+    return ret;
+}
+
+/* Updates the userdata of the GPU resource */
+NTSTATUS CDECL __wine_set_gpu_resource_userdata(HANDLE handle, void *user_data, unsigned int user_data_len)
+{
+    NTSTATUS ret;
+
+    SERVER_START_REQ(set_userdata_gpu_resource)
+    {
+        req->handle = wine_server_obj_handle(handle);
+        wine_server_add_data(req, user_data, user_data_len);
+        ret = wine_server_call( req );
     }
     SERVER_END_REQ;
 

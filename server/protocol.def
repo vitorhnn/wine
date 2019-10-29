@@ -3960,11 +3960,18 @@ struct handle_info
 @END
 
 
-/* Query KMT Handle of GPU Resource */
+/* Query KMT Handle and user data of GPU Resource */
 @REQ(query_gpu_resource)
     obj_handle_t handle;
 @REPLY
     obj_handle_t kmt_handle;
+    VARARG(userdata,bytes);
+@END
+
+/* Sets the userdata of the GPU resource */
+@REQ(set_userdata_gpu_resource)
+    obj_handle_t handle;
+    VARARG(userdata,bytes);
 @END
 
 

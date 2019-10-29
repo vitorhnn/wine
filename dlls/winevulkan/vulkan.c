@@ -1169,7 +1169,7 @@ void WINAPI wine_vkDestroyCommandPool(VkDevice device, VkCommandPool handle,
 extern NTSTATUS CDECL __wine_create_gpu_resource(PHANDLE handle, PHANDLE kmt_handle, ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr, int fd );
 extern NTSTATUS CDECL __wine_open_gpu_resource(HANDLE kmt_handle, OBJECT_ATTRIBUTES *attr, DWORD access, PHANDLE handle );
 extern NTSTATUS CDECL __wine_get_gpu_resource_fd(HANDLE handle, int *fd, int *needs_close);
-extern NTSTATUS CDECL __wine_get_gpu_resource_info(HANDLE handle, HANDLE *kmt_handle);
+extern NTSTATUS CDECL __wine_get_gpu_resource_info(HANDLE handle, HANDLE *kmt_handle, void *user_data_buf, unsigned int *user_data_len);
 
 static NTSTATUS server_create_dxgi_resource( PHANDLE handle, PHANDLE kmt_handle, int fd, DWORD access, SECURITY_ATTRIBUTES *sa, LPCWSTR name )
 {
@@ -1318,7 +1318,7 @@ VkResult WINAPI wine_vkAllocateMemory(VkDevice device, const VkMemoryAllocateInf
             {
                 /* occurs if the caller imports *and* exports the memory */
                 if (handle_types & VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT && object->kmt_handle == INVALID_HANDLE_VALUE)
-                    __wine_get_gpu_resource_info(object->handle, &object->kmt_handle);
+                    __wine_get_gpu_resource_info(object->handle, &object->kmt_handle, NULL, NULL);
             } else {
                 int fd;
                 VkMemoryGetFdInfoKHR host_fd_info;

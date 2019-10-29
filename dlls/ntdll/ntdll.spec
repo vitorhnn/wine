@@ -1574,4 +1574,5 @@
 @ cdecl __wine_create_gpu_resource(ptr ptr long ptr long)
 @ cdecl __wine_open_gpu_resource(ptr ptr long ptr)
 @ cdecl __wine_get_gpu_resource_fd(ptr ptr ptr)
-@ cdecl __wine_get_gpu_resource_info(ptr ptr)
+@ cdecl __wine_get_gpu_resource_info(ptr ptr ptr ptr)
+@ cdecl __wine_set_gpu_resource_userdata(ptr ptr long)

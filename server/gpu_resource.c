@@ -22,6 +22,10 @@ struct gpu_resource
     struct list         kernel_object;
     struct fd          *fd;
     obj_handle_t        kmt_handle; /* more like an ID */
+
+    /* used by API layers to store extra information about a resource */
+    void               *user_data;
+    data_size_t         user_data_len;
 };
 
 /* gpu_resource functions */
@@ -216,6 +220,7 @@ struct gpu_resource *create_gpu_resource(struct object *root, const struct unico
                 return NULL;
             }
             resource->kmt_handle = alloc_kmt_handle( resource );
+            resource->user_data = 0;
             allow_fd_caching( resource->fd );
         }
     }
@@ -287,12 +292,48 @@ struct gpu_resource *get_resource_obj( struct process *process, obj_handle_t han
     return (struct gpu_resource *)get_handle_obj( process, handle, access, &gpu_resource_ops );
 }
 
-/* Query KMT handle of GPU Resource */
+/* Query KMT handle and user data of GPU Resource */
 DECL_HANDLER(query_gpu_resource)
 {
     struct gpu_resource *resource;
+    data_size_t reply_size = get_reply_max_size();
 
-    if (!(resource = get_resource_obj( current->process, req->handle, 0 ))) return;
-    reply->kmt_handle = resource->kmt_handle;
-    release_object(resource);
+    if ((resource = get_resource_obj( current->process, req->handle, 0 )))
+    {
+        reply->kmt_handle = resource->kmt_handle;
+
+        if (reply_size)
+        {
+            if (reply_size >= resource->user_data_len)
+                set_reply_data(resource->user_data, resource->user_data_len);
+            else
+                set_error(STATUS_BUFFER_TOO_SMALL);
+        }
+
+        release_object(resource);
+    }
+}
+
+/* Sets the user data of the GPU resource */
+DECL_HANDLER(set_userdata_gpu_resource)
+{
+    struct gpu_resource *resource;
+    data_size_t len = get_req_data_size();
+
+    if ((resource = get_resource_obj( current->process, req->handle, 0 )))
+    {
+        free(resource->user_data);
+        resource->user_data = mem_alloc(len);
+        if (resource->user_data)
+        {
+            memcpy(resource->user_data, get_req_data(), len);
+            resource->user_data_len = len;
+        }
+        else
+        {
+            set_error(STATUS_NO_MEMORY);
+        }
+        
+        release_object(resource);
+    }
 }
