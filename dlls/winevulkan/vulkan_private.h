@@ -120,14 +120,40 @@ struct wine_cmd_pool
     struct list command_buffers;
 };
 
+struct wine_dev_mem
+{
+    VkDeviceMemory dev_mem;
+
+    VkExternalMemoryHandleTypeFlags handle_types;
+
+    BOOL inherit;
+    DWORD access;
+
+    /* Internal handle that lasts as long as the object */
+    HANDLE handle;
+
+    /* KMT "handle" */
+    HANDLE kmt_handle;
+};
+
 static inline struct wine_cmd_pool *wine_cmd_pool_from_handle(VkCommandPool handle)
 {
     return (struct wine_cmd_pool *)(uintptr_t)handle;
 }
 
+static inline struct wine_dev_mem *wine_dev_mem_from_handle(VkDeviceMemory handle)
+{
+    return (struct wine_dev_mem *)(uintptr_t)handle;
+}
+
 static inline VkCommandPool wine_cmd_pool_to_handle(struct wine_cmd_pool *cmd_pool)
 {
     return (VkCommandPool)(uintptr_t)cmd_pool;
+}
+
+static inline VkDeviceMemory wine_dev_mem_to_handle(struct wine_dev_mem *dev_mem)
+{
+    return (VkDeviceMemory)(uintptr_t)dev_mem;
 }
 
 void *wine_vk_get_device_proc_addr(const char *name) DECLSPEC_HIDDEN;

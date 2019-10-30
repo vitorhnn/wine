@@ -107,7 +107,6 @@ BLACKLISTED_EXTENSIONS = [
     "VK_EXT_pipeline_creation_feedback",
     "VK_GOOGLE_display_timing",
     "VK_KHR_external_fence_win32",
-    "VK_KHR_external_memory_win32",
     "VK_KHR_external_semaphore_win32",
     # Relates to external_semaphore and needs type conversions in bitflags.
     "VK_KHR_shared_presentable_image", # Needs WSI work.
@@ -117,7 +116,6 @@ BLACKLISTED_EXTENSIONS = [
     "VK_EXT_external_memory_dma_buf",
     "VK_EXT_image_drm_format_modifier",
     "VK_KHR_external_fence_fd",
-    "VK_KHR_external_memory_fd",
     "VK_KHR_external_semaphore_fd",
 
     # Deprecated extensions
@@ -168,11 +166,13 @@ FUNCTION_OVERRIDES = {
 
     # Device functions
     "vkAllocateCommandBuffers" : {"dispatch" : True, "driver" : False, "thunk" : False},
+    "vkAllocateMemory" : {"dispatch" : True, "driver" : False, "thunk" : False},
     "vkCmdExecuteCommands" : {"dispatch" : True, "driver" : False, "thunk" : False},
     "vkCreateCommandPool" : {"dispatch": True, "driver" : False, "thunk" : False},
     "vkDestroyCommandPool" : {"dispatch": True, "driver" : False, "thunk" : False},
     "vkDestroyDevice" : {"dispatch" : True, "driver" : False, "thunk" : False},
     "vkFreeCommandBuffers" : {"dispatch" : True, "driver" : False, "thunk" : False},
+    "vkFreeMemory" : {"dispatch" : True, "driver" : False, "thunk" : False},
     "vkGetDeviceProcAddr" : {"dispatch" : False, "driver" : True, "thunk" : False},
     "vkGetDeviceQueue" : {"dispatch": True, "driver" : False, "thunk" : False},
     "vkGetDeviceQueue2" : {"dispatch": True, "driver" : False, "thunk" : False},
@@ -211,6 +211,10 @@ FUNCTION_OVERRIDES = {
     # VK_KHR_device_group
     "vkGetDeviceGroupSurfacePresentModesKHR" : {"dispatch" : True, "driver" : True, "thunk" : True},
     "vkGetPhysicalDevicePresentRectanglesKHR" : {"dispatch" : True, "driver" : True, "thunk" : True},
+
+    # VK_KHR_external_memory_win32
+    "vkGetMemoryWin32HandleKHR" : {"dispatch" : False, "driver" : False, "thunk" : False},
+    "vkGetMemoryWin32HandlePropertiesKHR" : {"dispatch" : False, "driver" : False, "thunk" : False},
 }
 
 STRUCT_CHAIN_CONVERSIONS = [
@@ -886,6 +890,9 @@ class VkHandle(object):
 
         if self.name == "VkCommandPool":
             return "wine_cmd_pool_from_handle({0})->command_pool".format(name)
+
+        if self.name == "VkDeviceMemory":
+            return "wine_dev_mem_from_handle({0})->dev_mem".format(name)
 
         native_handle_name = None
 
