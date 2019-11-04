@@ -371,6 +371,12 @@ static HRESULT WINAPI SysKeyboardWImpl_GetDeviceState(LPDIRECTINPUTDEVICE8W ifac
 
     check_dinput_events();
 
+    if ((This->base.dwCoopLevel & DISCL_FOREGROUND) && This->base.win != GetForegroundWindow())
+    {
+        This->base.acquired = 0;
+        return DIERR_INPUTLOST;
+    }
+
     EnterCriticalSection(&This->base.crit);
 
     if (TRACE_ON(dinput)) {

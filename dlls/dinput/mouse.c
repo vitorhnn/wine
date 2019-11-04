@@ -672,6 +672,12 @@ static HRESULT WINAPI SysMouseWImpl_GetDeviceState(LPDIRECTINPUTDEVICE8W iface, 
 
     check_dinput_events();
 
+    if ((This->base.dwCoopLevel & DISCL_FOREGROUND) && This->base.win != GetForegroundWindow())
+    {
+        This->base.acquired = 0;
+        return DIERR_INPUTLOST;
+    }
+
     EnterCriticalSection(&This->base.crit);
     _dump_mouse_state(&This->m_state);
 
