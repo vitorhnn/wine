@@ -1266,13 +1266,19 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size, 
     }
     else
     {
-        size_t view_size = size + mask + 1;
         struct alloc_area alloc;
+        size_t view_size;
 
         alloc.size = size;
         alloc.mask = mask;
         alloc.top_down = top_down;
         alloc.limit = (void*)(get_zero_bits_64_mask( zero_bits_64 ) & (UINT_PTR)user_space_limit);
+
+        if (is_win64 && !top_down)
+        {
+            /* Ditch 0x7ffffe000000 - 0x7fffffff0000 reserved area. */
+            alloc.limit = min(alloc.limit, (void *)0x7ffffe000000);
+        }
 
         if (wine_mmap_enum_reserved_areas( alloc_reserved_area_callback, &alloc, top_down ))
         {
@@ -1283,13 +1289,15 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size, 
             goto done;
         }
 
-        if (zero_bits_64)
+        if (is_win64 || zero_bits_64)
         {
             if (!(ptr = map_free_area( address_space_start, alloc.limit, size, mask, top_down, VIRTUAL_GetUnixProt(vprot) )))
                 return STATUS_NO_MEMORY;
             TRACE( "got mem with map_free_area %p-%p\n", ptr, (char *)ptr + size );
             goto done;
         }
+
+        view_size = size + mask + 1;
 
         for (;;)
         {
