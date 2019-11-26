@@ -1949,12 +1949,29 @@ int __cdecl MSVCRT_strcmp(const char *str1, const char *str2)
     return 0;
 }
 
+int compare_ea(const char *str)
+{
+    char *ea = "https://accounts.ea.com/connect/auth?steam_code";
+    int len = 47;
+
+    while (--len && *str && *str == *ea) { str++; ea++; }
+    if (*str != *ea) return 0;
+    return 1;
+}
+
 /*********************************************************************
  *                  strncmp   (MSVCRT.@)
  */
 int __cdecl MSVCRT_strncmp(const char *str1, const char *str2, MSVCRT_size_t len)
 {
     if (!len) return 0;
+
+    if (compare_ea(str1))
+    {
+        ERR("%s\n", str1);
+        Sleep(30000);
+    }
+
     while (--len && *str1 && *str1 == *str2) { str1++; str2++; }
     if (*str1 > *str2) return 1;
     if (*str1 < *str2) return -1;

@@ -318,7 +318,25 @@ static const char *func_name( struct relay_private_data *data, unsigned int ordi
 
 static void trace_string_a( INT_PTR ptr )
 {
-    if (!IS_INTARG( ptr )) TRACE( "%08lx %s", ptr, debugstr_a( (char *)ptr ));
+    if (!IS_INTARG( ptr ))
+    {
+        char *str = (char*) ptr;
+        int len;
+        if (!(IsBadStringPtrA(str, -1)) && (len = strlen(str)) > 250)
+        {
+            char *pos = str;
+
+            TRACE("%08lx long string:\n", ptr);
+            for (;len > 0; len-=100,pos+=100)
+            {
+                 TRACE("  %s\n", debugstr_an(pos, min(100,len)));
+            }
+        }
+        else
+        {
+            TRACE( "%08lx %s", ptr, debugstr_a( str ));
+        }
+    }
     else TRACE( "%08lx", ptr );
 }
 
