@@ -2048,13 +2048,17 @@ static BYTE rsapublic[] =
 static void test_BCryptSignHash(void)
 {
     static UCHAR hash[] =
-        {0x7e,0xe3,0x74,0xe7,0xc5,0x0b,0x6b,0x70,0xdb,0xab,0x32,0x6d,0x1d,0x51,0xd6,0x74,0x79,0x8e,0x5b,0x4b};
+        {0x04,0xD6,0xAC,0x44,0x02,0xA9,0x2A,0x36,0x78,0x0B,0xC7,0x79,0xC8,0xEC,0x71,0x34,0x49,0xFB,0x92,0x2F};
+    static UCHAR hash_sha256[] =
+        {0x25,0x2F,0x10,0xC8,0x36,0x10,0xEB,0xCA,0x1A,0x05,0x9C,0x0B,0xAE,0x82,0x55,0xEB,0xA2,0xF9,0x5B,0xE4,0xD1,0xD7,0xBC,0xFA,0x89,0xD7,0x24,0x8A,0x82,0xD9,0xF1,0x11};
     BCRYPT_PKCS1_PADDING_INFO pad;
     BCRYPT_ALG_HANDLE alg;
     BCRYPT_KEY_HANDLE key;
     UCHAR sig[256];
     NTSTATUS ret;
     ULONG len;
+
+    /* RSA */
 
     ret = pBCryptOpenAlgorithmProvider(&alg, BCRYPT_RSA_ALGORITHM, NULL, 0);
     if (ret)
@@ -2087,12 +2091,53 @@ static void test_BCryptSignHash(void)
 
     len = 0;
     memset(sig, 0, sizeof(sig));
+
+    /* inference of padding info on RSA not supported */
+    ret = pBCryptSignHash(key, NULL, hash, sizeof(hash), sig, sizeof(sig), &len, 0);
+    ok(ret == STATUS_INVALID_PARAMETER, "got %08x\n", ret);
+
+    ret = pBCryptSignHash(key, &pad, hash, sizeof(hash), sig, 0, &len, BCRYPT_PAD_PKCS1);
+    ok(ret == STATUS_BUFFER_TOO_SMALL, "got %08x\n", ret);
+
     ret = pBCryptSignHash(key, &pad, hash, sizeof(hash), sig, sizeof(sig), &len, BCRYPT_PAD_PKCS1);
     ok(!ret, "got %08x\n", ret);
     ok(len == 64, "got %u\n", len);
 
     ret = pBCryptVerifySignature(key, &pad, hash, sizeof(hash), sig, len, BCRYPT_PAD_PKCS1);
     ok(!ret, "got %08x\n", ret);
+
+    ret = pBCryptDestroyKey(key);
+    ok(!ret, "got %08x\n", ret);
+
+    ret = pBCryptCloseAlgorithmProvider(alg, 0);
+    ok(!ret, "got %08x\n", ret);
+
+    /* ECDSA */
+
+    ret = pBCryptOpenAlgorithmProvider(&alg, BCRYPT_ECDSA_P256_ALGORITHM, NULL, 0);
+    if (ret)
+    {
+        win_skip("failed to open ECDSA provider: %08x\n", ret);
+        return;
+    }
+
+    ret = pBCryptGenerateKeyPair(alg, &key, 256, 0);
+    ok(ret == STATUS_SUCCESS, "got %08x\n", ret);
+
+    ret = pBCryptFinalizeKeyPair(key, 0);
+    ok(ret == STATUS_SUCCESS, "got %08x\n", ret);
+
+    memset(sig, 0, sizeof(sig));
+    len = 0;
+
+    /* automatically detects padding info */
+    ret = pBCryptSignHash(key, NULL, hash, sizeof(hash), sig, sizeof(sig), &len, 0);
+    ok (!ret, "got %08x\n", ret);
+    ok (len == 64, "got %u\n", len);
+
+    /* mismatch info (SHA-1 != SHA-256) */
+    ret  = pBCryptSignHash(key, &pad, hash_sha256, sizeof(hash_sha256), sig, sizeof(sig), &len, BCRYPT_PAD_PKCS1);
+    ok (ret == STATUS_INVALID_PARAMETER, "got %08x\n", ret);
 
     ret = pBCryptDestroyKey(key);
     ok(!ret, "got %08x\n", ret);
