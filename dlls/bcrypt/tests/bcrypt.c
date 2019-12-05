@@ -2135,8 +2135,13 @@ static void test_BCryptSignHash(void)
     ok (!ret, "got %08x\n", ret);
     ok (len == 64, "got %u\n", len);
 
+    /* provide correct info */
+    ret = pBCryptSignHash(key, &pad, hash, sizeof(hash), sig, sizeof(sig), &len, BCRYPT_PAD_PKCS1);
+    ok (!ret, "got %08x\n", ret);
+    ok (len == 64, "got %u\n", len);
+
     /* mismatch info (SHA-1 != SHA-256) */
-    ret  = pBCryptSignHash(key, &pad, hash_sha256, sizeof(hash_sha256), sig, sizeof(sig), &len, BCRYPT_PAD_PKCS1);
+    ret = pBCryptSignHash(key, &pad, hash_sha256, sizeof(hash_sha256), sig, sizeof(sig), &len, BCRYPT_PAD_PKCS1);
     ok (ret == STATUS_INVALID_PARAMETER, "got %08x\n", ret);
 
     ret = pBCryptDestroyKey(key);
