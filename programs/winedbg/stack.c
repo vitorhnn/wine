@@ -40,7 +40,7 @@ void stack_info(int len)
     struct dbg_lvalue lvalue;
 
     if(len <= 0)
-        len = 24;
+        len = 72;
 
     lvalue.cookie = 0;
     lvalue.type.id = dbg_itype_segptr;
@@ -49,6 +49,8 @@ void stack_info(int len)
     /* FIXME: we assume stack grows the same way as on i386 */
     if (!memory_get_current_stack(&lvalue.addr))
         dbg_printf("Bad segment (%d)\n", lvalue.addr.Segment);
+
+    lvalue.addr.Offset -= 48 * 8;
 
     dbg_printf("Stack dump:\n");
     switch (lvalue.addr.Mode)
