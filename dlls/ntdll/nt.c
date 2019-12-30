@@ -1159,6 +1159,7 @@ static inline BOOL have_sse_daz_mode(void)
 static inline void get_cpuinfo(SYSTEM_CPU_INFORMATION* info)
 {
     unsigned int regs[4], regs2[4];
+    BOOL amd_or_intel = FALSE;
 
 #if defined(__i386__)
     info->Architecture = PROCESSOR_ARCHITECTURE_INTEL;
@@ -1169,6 +1170,8 @@ static inline void get_cpuinfo(SYSTEM_CPU_INFORMATION* info)
     /* We're at least a 386 */
     info->FeatureSet = CPU_FEATURE_VME | CPU_FEATURE_X86 | CPU_FEATURE_PGE;
     info->Level = 3;
+
+    user_shared_data->ProcessorFeatures[PF_RDWRFSGSBASE_AVAILABLE] = TRUE;
 
     if (!have_cpuid()) return;
 
@@ -1214,15 +1217,7 @@ static inline void get_cpuinfo(SYSTEM_CPU_INFORMATION* info)
             info->Revision |= ((regs2[0] >> 4 ) & 0xf) << 8;  /* model          */
             info->Revision |= regs2[0] & 0xf;                 /* stepping       */
 
-            do_cpuid(0x80000000, regs);  /* get vendor cpuid level */
-            if (regs[0] >= 0x80000001)
-            {
-                do_cpuid(0x80000001, regs2);  /* get vendor features */
-                user_shared_data->ProcessorFeatures[PF_VIRT_FIRMWARE_ENABLED]        = (regs2[2] >> 2) & 1;
-                user_shared_data->ProcessorFeatures[PF_NX_ENABLED]                   = (regs2[3] >> 20) & 1;
-                user_shared_data->ProcessorFeatures[PF_3DNOW_INSTRUCTIONS_AVAILABLE] = (regs2[3] >> 31) & 1;
-                if (regs2[3] >> 31) info->FeatureSet |= CPU_FEATURE_3DNOW;
-            }
+            amd_or_intel = TRUE;
         }
         else if (regs[1] == GENU && regs[3] == INEI && regs[2] == NTEL)
         {
@@ -1237,12 +1232,7 @@ static inline void get_cpuinfo(SYSTEM_CPU_INFORMATION* info)
             if(regs2[3] & (1 << 21)) info->FeatureSet |= CPU_FEATURE_DS;
             user_shared_data->ProcessorFeatures[PF_VIRT_FIRMWARE_ENABLED] = (regs2[2] >> 5) & 1;
 
-            do_cpuid(0x80000000, regs);  /* get vendor cpuid level */
-            if (regs[0] >= 0x80000001)
-            {
-                do_cpuid(0x80000001, regs2);  /* get vendor features */
-                user_shared_data->ProcessorFeatures[PF_NX_ENABLED] = (regs2[3] >> 20) & 1;
-            }
+            amd_or_intel = TRUE;
         }
         else
         {
@@ -1251,6 +1241,21 @@ static inline void get_cpuinfo(SYSTEM_CPU_INFORMATION* info)
             /* repack model and stepping to make a "revision" */
             info->Revision = ((regs2[0] >> 4 ) & 0xf) << 8;  /* model    */
             info->Revision |= regs2[0] & 0xf;                /* stepping */
+        }
+
+        if (amd_or_intel)
+        {
+            do_cpuid(0x80000000, regs);  /* get vendor cpuid level */
+            if (regs[0] >= 0x80000001)
+            {
+                do_cpuid(0x80000001, regs2);  /* get vendor features */
+                user_shared_data->ProcessorFeatures[PF_VIRT_FIRMWARE_ENABLED]        = (regs2[2] >> 2) & 1;
+                user_shared_data->ProcessorFeatures[PF_NX_ENABLED]                   = (regs2[3] >> 20) & 1;
+                user_shared_data->ProcessorFeatures[PF_3DNOW_INSTRUCTIONS_AVAILABLE] = (regs2[3] >> 31) & 1;
+                user_shared_data->ProcessorFeatures[PF_RDTSC_INSTRUCTION_AVAILABLE] = (regs2[3] >> 27) & 1;
+                if (regs2[3] >> 31) info->FeatureSet |= CPU_FEATURE_3DNOW;
+                if ((regs2[3] >> 27) & 1) info->FeatureSet |= CPU_FEATURE_TSC;
+            }
         }
     }
 }
