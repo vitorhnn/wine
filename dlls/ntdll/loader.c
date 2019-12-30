@@ -4445,6 +4445,7 @@ void __wine_process_init(void)
     RTL_USER_PROCESS_PARAMETERS *params;
     ACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION runlevel;
     WINE_MODREF *wm, *wow64cpu_wm;
+    SYSTEM_BASIC_INFORMATION sbi;
     NTSTATUS status;
     ANSI_STRING func_name;
     UNICODE_STRING nt_name;
@@ -4562,6 +4563,9 @@ void __wine_process_init(void)
         TRACE( "Application requested admin rights (run level %d)\n", runlevel.RunLevel );
         elevate_process();  /* FIXME: the process exists with a wrong token for a short time */
     }
+
+    virtual_get_system_info(&sbi);
+    user_shared_data->NumberOfPhysicalPages = sbi.MmNumberOfPhysicalPages;
 
     /* the main exe needs to be the first in the load order list */
     RemoveEntryList( &wm->ldr.InLoadOrderModuleList );
