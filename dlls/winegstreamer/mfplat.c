@@ -16,13 +16,17 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+#include <gst/gst.h>
+
+#include "gst_private.h"
+
 #include <stdarg.h>
 
 #define COBJMACROS
 #define NONAMELESSUNION
 
 #include "mfapi.h"
-#include "mfidl.h"
 
 #include "wine/debug.h"
 #include "wine/heap.h"
