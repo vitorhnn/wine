@@ -82,4 +82,6 @@ HRESULT handler_end_create_object(struct handler *handler, IMFAsyncResult *resul
         MF_OBJECT_TYPE *obj_type, IUnknown **object);
 HRESULT handler_cancel_object_creation(struct handler *handler, IUnknown *cancel_cookie);
 
+HRESULT mpeg4_stream_handler_construct(REFIID riid, void **obj);
+
 #endif /* __GST_PRIVATE_INCLUDED__ */

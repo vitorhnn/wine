@@ -15,6 +15,7 @@ C_SRCS = \
 	main.c \
 	mediatype.c \
 	mfplat.c \
+	mpeg4_source.c \
 	pin.c \
 	qualitycontrol.c \
 	seeking.c \

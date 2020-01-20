@@ -414,6 +414,7 @@ static const struct class_object
 class_objects[] =
 {
     { &CLSID_VideoProcessorMFT, &video_processor_create },
+    { &CLSID_MPEG4ByteStreamHandler, &mpeg4_stream_handler_construct },
 };
 
 HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
