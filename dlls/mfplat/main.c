@@ -2729,13 +2729,6 @@ static HRESULT WINAPI bytestream_GetCapabilities(IMFByteStream *iface, DWORD *ca
     return S_OK;
 }
 
-static HRESULT WINAPI mfbytestream_GetLength(IMFByteStream *iface, QWORD *length)
-{
-    FIXME("%p, %p.\n", iface, length);
-
-    return E_NOTIMPL;
-}
-
 static HRESULT WINAPI mfbytestream_SetLength(IMFByteStream *iface, QWORD length)
 {
     mfbytestream *This = impl_from_IMFByteStream(iface);
@@ -2754,13 +2747,32 @@ static HRESULT WINAPI mfbytestream_GetCurrentPosition(IMFByteStream *iface, QWOR
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI mfbytestream_SetCurrentPosition(IMFByteStream *iface, QWORD position)
+static HRESULT WINAPI bytestream_file_GetLength(IMFByteStream *iface, QWORD *length)
 {
-    mfbytestream *This = impl_from_IMFByteStream(iface);
+    struct bytestream *stream = impl_from_IMFByteStream(iface);
+    LARGE_INTEGER li;
 
-    FIXME("%p, %s\n", This, wine_dbgstr_longlong(position));
+    if (GetFileSizeEx(stream->hfile, &li))
+        *length = li.QuadPart;
+    else
+        return HRESULT_FROM_WIN32(GetLastError());
 
-    return E_NOTIMPL;
+    return S_OK;
+}
+
+static HRESULT WINAPI bytestream_file_SetCurrentPosition(IMFByteStream *iface, QWORD position)
+{
+    struct bytestream *stream = impl_from_IMFByteStream(iface);
+
+    TRACE("%p, %s\n", iface, wine_dbgstr_longlong(position));
+
+    EnterCriticalSection(&stream->cs);
+
+    stream->position = position;
+
+    LeaveCriticalSection(&stream->cs);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI bytestream_file_IsEndOfStream(IMFByteStream *iface, BOOL *ret)
@@ -2891,10 +2903,10 @@ static const IMFByteStreamVtbl bytestream_file_vtbl =
     bytestream_AddRef,
     bytestream_Release,
     bytestream_GetCapabilities,
-    mfbytestream_GetLength,
+    bytestream_file_GetLength,
     mfbytestream_SetLength,
     mfbytestream_GetCurrentPosition,
-    mfbytestream_SetCurrentPosition,
+    bytestream_file_SetCurrentPosition,
     bytestream_file_IsEndOfStream,
     bytestream_file_Read,
     bytestream_BeginRead,
@@ -4869,7 +4881,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
 
     IUnknown_Release(handler.handler);
 
-    if (SUCCEEDED(queued_result->hr))
     {
         MFASYNCRESULT *data = (MFASYNCRESULT *)inner_result;
 
@@ -4898,8 +4909,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
             }
         }
     }
-    else
-        heap_free(queued_result);
 
     return S_OK;
 }

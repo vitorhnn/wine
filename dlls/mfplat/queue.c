@@ -166,12 +166,15 @@ static void release_work_item(struct work_item *item)
     }
 }
 
+static DWORD init_tls_idx;
+
 static void init_work_queue(MFASYNC_WORKQUEUE_TYPE queue_type, struct queue *queue)
 {
     TP_CALLBACK_ENVIRON_V3 env;
     unsigned int max_thread, i;
 
     queue->pool = CreateThreadpool(NULL);
+    init_tls_idx = TlsAlloc();
 
     memset(&env, 0, sizeof(env));
     env.Version = 3;
@@ -286,6 +289,9 @@ static void shutdown_queue(struct queue *queue)
     CloseThreadpool(queue->pool);
     queue->pool = NULL;
 
+    if (init_tls_idx != TLS_OUT_OF_INDEXES)
+        TlsFree(init_tls_idx);
+
     EnterCriticalSection(&queue->cs);
     LIST_FOR_EACH_ENTRY_SAFE(item, item2, &queue->pending_items, struct work_item, entry)
     {
@@ -348,6 +354,12 @@ static void CALLBACK standard_queue_worker(TP_CALLBACK_INSTANCE *instance, void 
     MFASYNCRESULT *result = (MFASYNCRESULT *)item->result;
 
     TRACE("result object %p.\n", result);
+
+    if (init_tls_idx != TLS_OUT_OF_INDEXES && TlsGetValue(init_tls_idx) == 0 && GetLastError() == ERROR_SUCCESS)
+    {
+        TlsSetValue(init_tls_idx, (LPVOID)0x1);
+        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    }
 
     IMFAsyncCallback_Invoke(result->pCallback, item->result);
 

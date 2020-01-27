@@ -47,8 +47,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(gstreamer);
 
 static const GUID MEDIASUBTYPE_CVID = {mmioFOURCC('c','v','i','d'), 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
-static pthread_key_t wine_gst_key;
-
 struct gstdemux
 {
     struct strmbase_filter filter;
@@ -106,17 +104,6 @@ static HRESULT GST_RemoveOutputPins(struct gstdemux *This);
 static HRESULT WINAPI GST_ChangeCurrent(IMediaSeeking *iface);
 static HRESULT WINAPI GST_ChangeStop(IMediaSeeking *iface);
 static HRESULT WINAPI GST_ChangeRate(IMediaSeeking *iface);
-
-void mark_wine_thread(void)
-{
-    /* set it to non-NULL to indicate that this is a Wine thread */
-    pthread_setspecific(wine_gst_key, &wine_gst_key);
-}
-
-BOOL is_wine_thread(void)
-{
-    return pthread_getspecific(wine_gst_key) != NULL;
-}
 
 static gboolean amt_from_gst_caps_audio_raw(const GstCaps *caps, AM_MEDIA_TYPE *amt)
 {
@@ -2002,14 +1989,8 @@ static HRESULT GST_RemoveOutputPins(struct gstdemux *This)
     return S_OK;
 }
 
-pthread_mutex_t cb_list_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cb_list_cond = PTHREAD_COND_INITIALIZER;
-struct list cb_list = LIST_INIT(cb_list);
-
-void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
+void forward_cb_gstdemux(struct cb_data *cbdata)
 {
-    struct cb_data *cbdata = user;
-
     switch(cbdata->type)
     {
     case WATCH_BUS:
@@ -2020,8 +2001,8 @@ void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
         }
     case EXISTING_NEW_PAD:
         {
-            struct existing_new_pad_data *data = &cbdata->u.existing_new_pad_data;
-            existing_new_pad(data->bin, data->pad, data->user);
+            struct pad_added_data *data = &cbdata->u.pad_added_data;
+            existing_new_pad(data->element, data->pad, data->user);
             break;
         }
     case QUERY_FUNCTION:
@@ -2039,13 +2020,13 @@ void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
     case NO_MORE_PADS:
         {
             struct no_more_pads_data *data = &cbdata->u.no_more_pads_data;
-            no_more_pads(data->decodebin, data->user);
+            no_more_pads(data->element, data->user);
             break;
         }
     case REQUEST_BUFFER_SRC:
         {
-            struct request_buffer_src_data *data = &cbdata->u.request_buffer_src_data;
-            cbdata->u.request_buffer_src_data.ret = request_buffer_src(data->pad, data->parent,
+            struct getrange_data *data = &cbdata->u.getrange_data;
+            cbdata->u.getrange_data.ret = request_buffer_src(data->pad, data->parent,
                     data->ofs, data->len, data->buf);
             break;
         }
@@ -2075,8 +2056,8 @@ void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
         }
     case REMOVED_DECODED_PAD:
         {
-            struct removed_decoded_pad_data *data = &cbdata->u.removed_decoded_pad_data;
-            removed_decoded_pad(data->bin, data->pad, data->user);
+            struct pad_removed_data *data = &cbdata->u.pad_removed_data;
+            removed_decoded_pad(data->element, data->pad, data->user);
             break;
         }
     case AUTOPLUG_BLACKLIST:
@@ -2111,44 +2092,12 @@ void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
                     data->query);
             break;
         }
-    }
-
-    pthread_mutex_lock(&cbdata->lock);
-    cbdata->finished = 1;
-    pthread_cond_broadcast(&cbdata->cond);
-    pthread_mutex_unlock(&cbdata->lock);
-}
-
-static DWORD WINAPI dispatch_thread(void *user)
-{
-    struct cb_data *cbdata;
-
-    CoInitializeEx(NULL, COINIT_MULTITHREADED);
-
-    pthread_mutex_lock(&cb_list_lock);
-
-    while(1){
-        pthread_cond_wait(&cb_list_cond, &cb_list_lock);
-
-        while(!list_empty(&cb_list)){
-            cbdata = LIST_ENTRY(list_head(&cb_list), struct cb_data, entry);
-            list_remove(&cbdata->entry);
-
-            TrySubmitThreadpoolCallback(&perform_cb, cbdata, NULL);
+    default:
+        {
+            ERR("Wrong callback forwarder called\n");
+            return;
         }
     }
-
-    pthread_mutex_unlock(&cb_list_lock);
-
-    CoUninitialize();
-
-    return 0;
-}
-
-void start_dispatch_thread(void)
-{
-    pthread_key_create(&wine_gst_key, NULL);
-    CloseHandle(CreateThread(NULL, 0, &dispatch_thread, NULL, 0, NULL));
 }
 
 static HRESULT wave_parser_sink_query_accept(struct strmbase_pin *iface, const AM_MEDIA_TYPE *mt)

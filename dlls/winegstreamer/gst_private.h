@@ -56,6 +56,7 @@ void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 
 extern const char *media_quark_string DECLSPEC_HIDDEN;
 
+extern HRESULT mfplat_DllRegisterServer(void) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
 
@@ -82,6 +83,11 @@ HRESULT handler_end_create_object(struct handler *handler, IMFAsyncResult *resul
         MF_OBJECT_TYPE *obj_type, IUnknown **object);
 HRESULT handler_cancel_object_creation(struct handler *handler, IUnknown *cancel_cookie);
 
+IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps);
+IMFSample* mf_sample_from_gst_sample(GstSample *in);
+GstSample* gst_sample_from_mf_sample(IMFSample *in);
+
 HRESULT mpeg4_stream_handler_construct(REFIID riid, void **obj);
+HRESULT h264_decoder_construct(REFIID riid, void **obj);
 
 #endif /* __GST_PRIVATE_INCLUDED__ */

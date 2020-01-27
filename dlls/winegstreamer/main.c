@@ -470,9 +470,9 @@ HRESULT WINAPI DllRegisterServer(void)
 {
     HRESULT hr;
 
-    TRACE("\n");
-
-    hr = AMovieDllRegisterServer2(TRUE);
+    hr = mfplat_DllRegisterServer();
+    if (SUCCEEDED(hr))
+        hr = AMovieDllRegisterServer2(TRUE);
     if (SUCCEEDED(hr))
         hr = __wine_register_resources(hInst);
     return hr;

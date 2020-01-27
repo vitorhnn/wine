@@ -414,6 +414,7 @@ static const struct class_object
 class_objects[] =
 {
     { &CLSID_VideoProcessorMFT, &video_processor_create },
+    { &CLSID_CMSH264DecoderMFT, &h264_decoder_construct},
     { &CLSID_MPEG4ByteStreamHandler, &mpeg4_stream_handler_construct },
 };
 
@@ -446,4 +447,189 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 HRESULT mfplat_can_unload_now(void)
 {
     return !object_locks ? S_OK : S_FALSE;
+}
+
+static WCHAR h264decoderW[] = {'H','.','2','6','4',' ','D','e','c','o','d','e','r',0};
+struct register_type_info
+{
+    const GUID *major_type;
+    const GUID *sub_type;
+};
+
+const struct register_type_info h264_decoder_input_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_H264
+    }
+};
+const struct register_type_info h264_decoder_output_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_I420
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_IYUV
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_NV12
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YUY2,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YV12,
+    }
+};
+
+static const struct mft
+{
+    const GUID *clsid;
+    const GUID *category;
+    LPWSTR name;
+    const UINT32 flags;
+    const UINT32 input_types_count;
+    const struct register_type_info *input_types;
+    const UINT32 output_types_count;
+    const struct register_type_info *output_types;
+    IMFAttributes *attributes;
+}
+mfts[] =
+{
+    {
+        &CLSID_CMSH264DecoderMFT,
+        &MFT_CATEGORY_VIDEO_DECODER,
+        h264decoderW,
+        MFT_ENUM_FLAG_SYNCMFT,
+        ARRAY_SIZE(h264_decoder_input_types),
+        h264_decoder_input_types,
+        ARRAY_SIZE(h264_decoder_output_types),
+        h264_decoder_output_types,
+        NULL
+    }
+};
+
+HRESULT mfplat_DllRegisterServer(void)
+{
+    HRESULT hr;
+
+    for (unsigned int i = 0; i < ARRAY_SIZE(mfts); i++)
+    {
+        const struct mft *cur = &mfts[i];
+
+        MFT_REGISTER_TYPE_INFO *input_types, *output_types;
+        input_types = heap_alloc(cur->input_types_count * sizeof(input_types[0]));
+        output_types = heap_alloc(cur->output_types_count * sizeof(output_types[0]));
+        for (unsigned int i = 0; i < cur->input_types_count; i++)
+        {
+            input_types[i].guidMajorType = *(cur->input_types[i].major_type);
+            input_types[i].guidSubtype = *(cur->input_types[i].sub_type);
+        }
+        for (unsigned int i = 0; i < cur->output_types_count; i++)
+        {
+            output_types[i].guidMajorType = *(cur->output_types[i].major_type);
+            output_types[i].guidSubtype = *(cur->output_types[i].sub_type);
+        }
+
+        MFTRegister(*(cur->clsid), *(cur->category), cur->name, cur->flags, cur->input_types_count,
+                    input_types, cur->output_types_count, output_types, cur->attributes);
+        
+        heap_free(input_types);
+        heap_free(output_types);
+
+        if (FAILED(hr))
+            return hr;
+    }
+    return S_OK;
+}
+
+IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps)
+{
+    IMFMediaType *media_type;
+    GstStructure *info;
+    const char *media_type_name;
+    gchar *human_readable;
+
+    if (FAILED(MFCreateMediaType(&media_type)))
+    {
+        return NULL;
+    }
+
+    caps = gst_caps_make_writable(caps);
+    info = gst_caps_get_structure(caps, 0);
+    media_type_name = gst_structure_get_name(info);
+
+    human_readable = gst_structure_to_string(info);
+    TRACE("caps = %s\n", human_readable);
+    g_free(human_readable);
+    // audio/mpeg, mpegversion=(int)4, framed=(boolean)true, stream-format=(string)raw, level=(string)2, base-profile=(string)lc, profile=(string)lc, codec_data=(buffer)1190, rate=(int)48000, channels=(int)2;
+    // video/x-h264, stream-format=(string)avc, alignment=(string)au, level=(string)4.1, profile=(string)main, codec_data=(buffer)014d4029ffe10018674d4029965200f0044fcb29010101400000fa40003a982101000468eb7352, width=(int)1920, height=(int)1080, framerate=(fraction)30000/10
+
+    if (!(strncmp(media_type_name, "video", 5)))
+    {
+        const char *video_format = media_type_name + 6;
+        gint width, height, framerate_num, framerate_dem;
+
+        if (gst_structure_get_int(info, "width", &width) && gst_structure_get_int(info, "height", &height))
+        {
+            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
+        }
+        if (gst_structure_get_fraction(info, "framerate", &framerate_num, &framerate_dem))
+        {
+            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_RATE, ((UINT64)framerate_num << 32) | framerate_dem);
+        }
+
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+        if (!(strcmp(video_format, "x-h264")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else if (!(strcmp(video_format, "mpeg")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_M4S2);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else
+            ERR("Unrecognized video format %s\n", video_format);
+    }
+    else if (!(strncmp(media_type_name, "audio", 5)))
+    {
+        const char *audio_format = media_type_name + 6;
+
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+        if (!(strcmp(audio_format, "mpeg")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFAudioFormat_MPEG);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else
+            ERR("Unrecognized audio format %s\n", audio_format);
+    }
+    else
+    {
+        return NULL;
+    }
+
+    return media_type;
+}
+
+IMFSample* mf_sample_from_gst_sample(GstSample *in)
+{
+    IMFSample *out;
+
+    MFCreateSample(&out);
+
+    return out;
+}
+
+GstSample* gst_sample_from_mf_sample(IMFSample *in)
+{
+    ERR("stub\n");
+    //#error 2
 }

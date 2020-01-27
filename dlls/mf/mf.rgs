@@ -19,6 +19,10 @@ HKLM
                     {
                         val '{271C3902-6095-4c45-A22F-20091816EE9E}' = s 'MPEG4 Byte Stream Handler'
                     }
+                    'video/mp4'
+                    {
+                        val '{271C3902-6095-4c45-A22F-20091816EE9E}' = s 'MPEG4 Byte Stream Handler'
+                    }
                 }
             }
         }

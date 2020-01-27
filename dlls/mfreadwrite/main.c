@@ -775,8 +775,13 @@ static HRESULT WINAPI src_reader_SetCurrentMediaType(IMFSourceReader *iface, DWO
         return MF_E_INVALIDSTREAMNUMBER;
 
     /* FIXME: validate passed type and current presentation state. */
+    /* FIXME: once we create the decoder, extend the media type information (framerate, etc.) */
 
     EnterCriticalSection(&reader->cs);
+
+    /* first, check if it's a native type */
+    /* then, check if the source output is compressed */
+    /* if so, use MFTEnum to look for a decoder */
 
     hr = IMFMediaType_CopyAllItems(type, (IMFAttributes *)reader->streams[index].current);
 
@@ -1600,6 +1605,11 @@ static HRESULT create_source_reader_from_object(IUnknown *unk, IMFAttributes *at
         IMFMediaSource_Release(source);
     if (stream)
         IMFByteStream_Release(stream);
+
+    if (SUCCEEDED(hr))
+    {
+        TRACE("->(%p)\n", *out);
+    }
 
     return hr;
 }

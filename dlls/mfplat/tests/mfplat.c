@@ -341,6 +341,26 @@ static const IMFAsyncCallbackVtbl test_create_from_file_handler_callback_vtbl =
     test_create_from_file_handler_callback_Invoke,
 };
 
+static const struct expected_event
+{
+    const HRESULT status_code;
+    const MediaEventType type;
+    const GUID *extended_type;
+}
+expected_events[] =
+{
+    {
+        S_OK,
+        MENewStream,
+        NULL
+    },
+    {
+        S_OK,
+        MESourceStarted,
+        NULL
+    }
+};
+
 static void test_source_resolver(void)
 {
     static const WCHAR file_type[] = {'v','i','d','e','o','/','m','p','4',0};
@@ -352,6 +372,8 @@ static void test_source_resolver(void)
     IMFMediaSource *mediasource;
     IMFPresentationDescriptor *descriptor;
     IMFMediaTypeHandler *handler;
+    IMFMediaType *type;
+    PROPVARIANT empty_var;
     BOOL selected, do_uninit;
     MF_OBJECT_TYPE obj_type;
     IMFStreamDescriptor *sd;
@@ -440,11 +462,64 @@ static void test_source_resolver(void)
     ok(hr == S_OK, "Failed to get type handler, hr %#x.\n", hr);
 
     hr = IMFMediaTypeHandler_GetMajorType(handler, &guid);
-todo_wine
     ok(hr == S_OK, "Failed to get stream major type, hr %#x.\n", hr);
+    ok (IsEqualGUID(&guid, &MFMediaType_Video), "Unexpected major type %s.\n", debugstr_guid(&guid));
 
+    hr = IMFMediaTypeHandler_GetCurrentMediaType(handler, &type);
+    ok (hr == S_OK, "Failed to get current media type, hr %#x.\n", hr);
+
+    hr = IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &guid);
+    ok(hr == S_OK, "Failed to get media sub type, hr %#x.\n", hr);
+    ok(IsEqualGUID(&guid, &MFVideoFormat_M4S2), "Unexpected sub type %s.\n", debugstr_guid(&guid));
+
+    hr = IMFPresentationDescriptor_SelectStream(descriptor, 0);
+    ok(hr == S_OK, "Failed to select video stream, hr %#x.\n", hr);
+
+    IMFMediaType_Release(type);
     IMFMediaTypeHandler_Release(handler);
     IMFStreamDescriptor_Release(sd);
+
+    empty_var.vt = VT_EMPTY;
+    hr = IMFMediaSource_Start(mediasource, descriptor, &GUID_NULL, &empty_var);
+    ok(hr == S_OK, "Failed to start media source, hr %#x.\n", hr);
+
+    if (hr == S_OK)
+    {
+        for (unsigned int i = 0; i < ARRAY_SIZE(expected_events); i++)
+        {
+            const struct expected_event *cur = &expected_events[i];
+            IMFMediaEvent *event;
+
+            hr = IMFMediaSource_GetEvent(mediasource, 0, &event);
+            ok(hr == S_OK, "Failed to get event from media source, hr %#x.\n");
+            {
+                HRESULT status_code;
+                hr = IMFMediaEvent_GetStatus(event, &status_code);
+                ok (hr == S_OK, "Failed to get status code, hr %#x.\n", hr);
+                ok (status_code == cur->status_code, "Unexpected status code %#x, expected %#x.\n", status_code, cur->status_code);
+            }
+            {
+                MediaEventType event_type;
+                hr = IMFMediaEvent_GetType(event, &event_type);
+                ok(hr == S_OK, "Failed to event type, hr %#x.\n", hr);
+                ok(event_type == cur->type, "Unexpected event type %u, expected %u.\n", event_type, cur->type);
+            }
+            if (cur->extended_type)
+            {
+                GUID *extended_type;
+                hr = IMFMediaEvent_GetExtendedType(event, extended_type);
+                ok(hr == S_OK, "Failed to get extended type, hr %#x.\n", hr);
+                ok(IsEqualGUID(extended_type, cur->extended_type), "Unexpected extended type %s, expected %s.\n",
+                    debugstr_guid(extended_type), debugstr_guid(cur->extended_type));
+            }
+            IMFMediaEvent_Release(event);
+        }
+
+        /* Request Samples */
+    }
+
+    hr = IMFMediaSource_Stop(mediasource);
+    todo_wine ok(hr == S_OK, "Failed to stop media source, hr %#x. \n", hr);
 
     IMFPresentationDescriptor_Release(descriptor);
     IMFMediaSource_Release(mediasource);

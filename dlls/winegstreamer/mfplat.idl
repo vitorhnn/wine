@@ -31,3 +31,10 @@ coclass VideoProcessorMFT { }
     uuid(271c3902-6095-4c45-a22f-20091816ee9e)
 ]
 coclass MPEG4ByteStreamHandler { }
+
+[
+    helpstring("H.264 Decoder"),
+    threading(both),
+    uuid(62ce7e72-4c71-4d20-b15d-452831a87d9d)
+]
+coclass H264Decoder {}

@@ -11,6 +11,7 @@ C_SRCS = \
 	gst_cbs.c \
 	gstdemux.c \
 	gsttffilter.c \
+	h264_decode.c \
 	handler.c \
 	main.c \
 	mediatype.c \
