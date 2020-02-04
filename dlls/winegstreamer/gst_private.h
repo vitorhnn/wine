@@ -30,6 +30,8 @@
 #include "winuser.h"
 #include "dshow.h"
 #include "strmif.h"
+#include "mfidl.h"
+#include "mfobjects.h"
 #include "wine/heap.h"
 #include "wine/strmbase.h"
 
@@ -46,6 +48,9 @@ void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
+
+IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps);
+IMFSample* mf_sample_from_gst_sample(GstSample *in);
 
 HRESULT container_stream_handler_construct(REFIID riid, void **obj, const char *demuxer_name);
 

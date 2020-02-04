@@ -16,6 +16,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+#include <gst/gst.h>
+
+#include "gst_private.h"
+
 #include <stdarg.h>
 
 #define COBJMACROS
@@ -441,4 +446,103 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 HRESULT mfplat_can_unload_now(void)
 {
     return !object_locks ? S_OK : S_FALSE;
+}
+
+/* caps must me writable*/
+IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps)
+{
+    IMFMediaType *media_type;
+    GstStructure *info;
+    const char *media_type_name;
+    gchar *human_readable;
+
+    if (FAILED(MFCreateMediaType(&media_type)))
+    {
+        return NULL;
+    }
+
+    info = gst_caps_get_structure(caps, 0);
+    media_type_name = gst_structure_get_name(info);
+
+    human_readable = gst_structure_to_string(info);
+    TRACE("caps = %s\n", human_readable);
+    g_free(human_readable);
+
+    if (!(strncmp(media_type_name, "video", 5)))
+    {
+        const char *video_format = media_type_name + 6;
+        gint width, height, framerate_num, framerate_dem;
+
+        if (gst_structure_get_int(info, "width", &width) && gst_structure_get_int(info, "height", &height))
+        {
+            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
+        }
+        if (gst_structure_get_fraction(info, "framerate", &framerate_num, &framerate_dem))
+        {
+            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_RATE, ((UINT64)framerate_num << 32) | framerate_dem);
+        }
+
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+        if (!(strcmp(video_format, "x-h264")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else if (!(strcmp(video_format, "mpeg")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_M4S2);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else
+            ERR("Unrecognized video format %s\n", video_format);
+    }
+    else if (!(strncmp(media_type_name, "audio", 5)))
+    {
+        const char *audio_format = media_type_name + 6;
+
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+        if (!(strcmp(audio_format, "mpeg")))
+        {
+            IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFAudioFormat_MPEG);
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+        }
+        else
+            ERR("Unrecognized audio format %s\n", audio_format);
+    }
+    else
+    {
+        return NULL;
+    }
+
+    return media_type;
+}
+
+IMFSample* mf_sample_from_gst_sample(GstSample *in)
+{
+    GstBuffer *gst_buffer;
+    gsize buf_size;
+    BYTE *buf_data;
+    LONGLONG duration, time;
+    IMFMediaBuffer *mf_buffer;
+    IMFSample *out = NULL;
+
+    gst_buffer = gst_sample_get_buffer(in);
+
+    buf_size = gst_buffer_get_size(gst_buffer);
+
+    duration = GST_BUFFER_DURATION(gst_buffer);
+    time = GST_BUFFER_DTS(gst_buffer);
+
+    MFCreateMemoryBuffer(buf_size, &mf_buffer);
+    IMFMediaBuffer_Lock(mf_buffer, &buf_data, NULL, NULL);
+    gst_buffer_extract(gst_buffer, 0, buf_data, buf_size);
+    IMFMediaBuffer_Unlock(mf_buffer);
+
+    MFCreateSample(&out);
+    IMFSample_AddBuffer(out, mf_buffer);
+    IMFMediaBuffer_Release(mf_buffer);
+    IMFSample_SetSampleDuration(out, duration / 100);
+    IMFSample_SetSampleTime(out, time / 100);
+
+    return out;
 }
