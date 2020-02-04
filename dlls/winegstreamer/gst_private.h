@@ -47,4 +47,6 @@ void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
 
+HRESULT container_stream_handler_construct(REFIID riid, void **obj, const char *demuxer_name);
+
 #endif /* __GST_PRIVATE_INCLUDED__ */
