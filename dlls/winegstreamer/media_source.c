@@ -202,9 +202,8 @@ static ULONG WINAPI media_stream_Release(IMFMediaStream *iface)
 
     if (!ref)
     {
-        ERR("incomplete cleanup\n");
-        IMFMediaEventQueue_Release(This->event_queue);
-        IMFMediaSource_Release(&This->parent_source->IMFMediaSource_iface);
+        if (This->state != STREAM_SHUTDOWN)
+            ERR("incomplete cleanup\n");
         heap_free(This);
     }
 

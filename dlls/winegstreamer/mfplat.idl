@@ -24,3 +24,10 @@
 
 ]
 coclass VideoProcessorMFT { }
+
+[
+    helpstring("MP4 Byte Stream Handler"),
+    threading(both),
+    uuid(271c3902-6095-4c45-a22f-20091816ee9e)
+]
+coclass MPEG4ByteStreamHandler { }
