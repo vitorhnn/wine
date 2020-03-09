@@ -46,6 +46,7 @@ BOOL init_gstreamer(void) DECLSPEC_HIDDEN;
 
 void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 
+extern HRESULT mfplat_DllRegisterServer(void) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
 
@@ -54,6 +55,11 @@ GstCaps *caps_from_media_type(IMFMediaType *type);
 IMFSample* mf_sample_from_gst_buffer(GstBuffer *in);
 GstBuffer* gst_buffer_from_mf_sample(IMFSample *in);
 
+enum decoder_type
+{
+    DECODER_TYPE_H264,
+};
+HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type);
 enum source_type
 {
     SOURCE_TYPE_MPEG_4,

@@ -413,6 +413,11 @@ failed:
     return hr;
 }
 
+static HRESULT h264_decoder_create(REFIID riid, void **ret)
+{
+    return generic_decoder_construct(riid, ret, DECODER_TYPE_H264);
+}
+
 static HRESULT mp4_stream_handler_create(REFIID riid, void **ret)
 {
     return container_stream_handler_construct(riid, ret, SOURCE_TYPE_MPEG_4);
@@ -426,6 +431,7 @@ static const struct class_object
 class_objects[] =
 {
     { &CLSID_VideoProcessorMFT, &video_processor_create },
+    { &CLSID_CMSH264DecoderMFT, &h264_decoder_create },
     { &CLSID_MPEG4ByteStreamHandler, &mp4_stream_handler_create },
 };
 
@@ -458,6 +464,105 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 HRESULT mfplat_can_unload_now(void)
 {
     return !object_locks ? S_OK : S_FALSE;
+}
+
+static WCHAR h264decoderW[] = {'H','.','2','6','4',' ','D','e','c','o','d','e','r',0};
+struct register_type_info
+{
+    const GUID *major_type;
+    const GUID *sub_type;
+};
+
+const struct register_type_info h264_decoder_input_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_H264
+    }
+};
+const struct register_type_info h264_decoder_output_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_I420
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_IYUV
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_NV12
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YUY2,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YV12,
+    }
+};
+
+static const struct mft
+{
+    const GUID *clsid;
+    const GUID *category;
+    LPWSTR name;
+    const UINT32 flags;
+    const UINT32 input_types_count;
+    const struct register_type_info *input_types;
+    const UINT32 output_types_count;
+    const struct register_type_info *output_types;
+    IMFAttributes *attributes;
+}
+mfts[] =
+{
+    {
+        &CLSID_CMSH264DecoderMFT,
+        &MFT_CATEGORY_VIDEO_DECODER,
+        h264decoderW,
+        MFT_ENUM_FLAG_SYNCMFT,
+        ARRAY_SIZE(h264_decoder_input_types),
+        h264_decoder_input_types,
+        ARRAY_SIZE(h264_decoder_output_types),
+        h264_decoder_output_types,
+        NULL
+    }
+};
+
+HRESULT mfplat_DllRegisterServer(void)
+{
+    HRESULT hr;
+
+    for (unsigned int i = 0; i < ARRAY_SIZE(mfts); i++)
+    {
+        const struct mft *cur = &mfts[i];
+
+        MFT_REGISTER_TYPE_INFO *input_types, *output_types;
+        input_types = heap_alloc(cur->input_types_count * sizeof(input_types[0]));
+        output_types = heap_alloc(cur->output_types_count * sizeof(output_types[0]));
+        for (unsigned int i = 0; i < cur->input_types_count; i++)
+        {
+            input_types[i].guidMajorType = *(cur->input_types[i].major_type);
+            input_types[i].guidSubtype = *(cur->input_types[i].sub_type);
+        }
+        for (unsigned int i = 0; i < cur->output_types_count; i++)
+        {
+            output_types[i].guidMajorType = *(cur->output_types[i].major_type);
+            output_types[i].guidSubtype = *(cur->output_types[i].sub_type);
+        }
+
+        MFTRegister(*(cur->clsid), *(cur->category), cur->name, cur->flags, cur->input_types_count,
+                    input_types, cur->output_types_count, output_types, cur->attributes);
+
+        heap_free(input_types);
+        heap_free(output_types);
+
+        if (FAILED(hr))
+            return hr;
+    }
+    return S_OK;
 }
 
 /* IMPORTANT: caps will be modified to represent the exact type needed for the format */
