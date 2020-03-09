@@ -18,6 +18,9 @@
 
 #include "config.h"
 
+#include <stdio.h>
+#include <assert.h>
+
 #include <gst/gst.h>
 
 #include "objbase.h"
@@ -51,6 +54,14 @@ void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
         perform_cb_gstdemux(cbdata);
     else if (cbdata->type < MEDIA_SOURCE_MAX)
         perform_cb_media_source(cbdata);
+    else if (cbdata->type < MF_DECODE_MAX)
+        perform_cb_mf_decode(cbdata);
+    else
+    {
+        fprintf(stderr, "No handler registered for callback\n");
+        assert(0);
+    }
+
 
     pthread_mutex_lock(&cbdata->lock);
     cbdata->finished = 1;

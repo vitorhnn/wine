@@ -5817,7 +5817,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
 
     IUnknown_Release(handler.handler);
 
-    if (SUCCEEDED(queued_result->hr))
     {
         MFASYNCRESULT *data = (MFASYNCRESULT *)inner_result;
 
@@ -5846,8 +5845,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
             }
         }
     }
-    else
-        heap_free(queued_result);
 
     return S_OK;
 }
@@ -8766,6 +8763,27 @@ HRESULT WINAPI MFCreateDXGIDeviceManager(UINT *token, IMFDXGIDeviceManager **man
 
     *token = object->token;
     *manager = &object->IMFDXGIDeviceManager_iface;
+
+    return S_OK;
+}
+
+HRESULT WINAPI MFGetStrideForBitmapInfoHeader(DWORD format, DWORD width, LONG *stride)
+{
+    TRACE("%u, %u, %p\n", format, width, stride);
+
+    switch(format)
+    {
+        case MAKEFOURCC('N','V','1','2'):
+        {
+            *stride = width;
+            break;
+        }
+        default:
+        {
+            FIXME("Unrecognized format %u\n", format);
+            return E_NOTIMPL;
+        }
+    }
 
     return S_OK;
 }
