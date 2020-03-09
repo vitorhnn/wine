@@ -53,7 +53,8 @@ enum CB_TYPE {
     SOURCE_ALL_STREAMS,
     STREAM_NEW_SAMPLE,
     STREAM_EOS,
-    MEDIA_SOURCE_MAX
+    WATCH_SOURCE_BUS,
+    MEDIA_SOURCE_MAX,
 };
 
 struct cb_data {
@@ -183,5 +184,6 @@ void source_stream_removed_wrapper(GstElement *element, GstPad *pad, gpointer us
 void source_all_streams_wrapper(GstElement *element, gpointer user) DECLSPEC_HIDDEN;
 GstFlowReturn stream_new_sample_wrapper(GstElement *appsink, gpointer user) DECLSPEC_HIDDEN;
 void stream_eos_wrapper(GstElement *appsink, gpointer user) DECLSPEC_HIDDEN;
+GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user) DECLSPEC_HIDDEN;
 
 #endif

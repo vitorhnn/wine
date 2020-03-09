@@ -415,3 +415,16 @@ void stream_eos_wrapper(GstElement *appsink, gpointer user)
 
     call_cb(&cbdata);
 }
+
+GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user)
+{
+    struct cb_data cbdata = { WATCH_SOURCE_BUS };
+
+    cbdata.u.watch_bus_data.bus = bus;
+    cbdata.u.watch_bus_data.msg = message;
+    cbdata.u.watch_bus_data.user = user;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.watch_bus_data.ret;
+}
