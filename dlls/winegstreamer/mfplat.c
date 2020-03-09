@@ -21,19 +21,24 @@
 
 #include "gst_private.h"
 
-#include "gst_private.h"
-
 #include <stdarg.h>
 
 #define COBJMACROS
 #define NONAMELESSUNION
 
 #include "mfapi.h"
+#include "codecapi.h"
 
 #include "wine/debug.h"
 #include "wine/heap.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
+
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
+#define defer_merge(a,b) a##b
+#define defer_cleanup(a) defer_merge(defer_cleanup_, a)
+#define defer_scopevar(a) defer_merge(defer_scopevar_, a)
+#define defer auto void defer_cleanup(__LINE__)(void**); __attribute__((cleanup(defer_cleanup(__LINE__)))) void* defer_scopevar(__LINE__) = 0; void defer_cleanup(__LINE__)(void** unused_param_deadbeef)
 
 static LONG object_locks;
 
@@ -410,7 +415,7 @@ failed:
 
 static HRESULT mp4_stream_handler_create(REFIID riid, void **ret)
 {
-    return container_stream_handler_construct(riid, ret, "qtdemux");
+    return container_stream_handler_construct(riid, ret, SOURCE_TYPE_MPEG_4);
 }
 
 static const struct class_object
@@ -455,7 +460,7 @@ HRESULT mfplat_can_unload_now(void)
     return !object_locks ? S_OK : S_FALSE;
 }
 
-/* caps must me writable*/
+/* IMPORTANT: caps will be modified to represent the exact type needed for the format */
 IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps)
 {
     IMFMediaType *media_type;
@@ -478,22 +483,50 @@ IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps)
     if (!(strncmp(media_type_name, "video", 5)))
     {
         const char *video_format = media_type_name + 6;
-        gint width, height, framerate_num, framerate_dem;
+        gint width, height, framerate_num, framerate_den;
 
         if (gst_structure_get_int(info, "width", &width) && gst_structure_get_int(info, "height", &height))
         {
             IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_SIZE, ((UINT64)width << 32) | height);
         }
-        if (gst_structure_get_fraction(info, "framerate", &framerate_num, &framerate_dem))
+        if (gst_structure_get_fraction(info, "framerate", &framerate_num, &framerate_den))
         {
-            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_RATE, ((UINT64)framerate_num << 32) | framerate_dem);
+            IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_RATE, ((UINT64)framerate_num << 32) | framerate_den);
         }
 
         IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
         if (!(strcmp(video_format, "x-h264")))
         {
+            const char *profile, *level;
+
             IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_H264);
             IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+
+            if ((profile = gst_structure_get_string(info, "profile")))
+            {
+                if (!(strcmp(profile, "high")))
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High);
+                else if (!(strcmp(profile, "high-4:4:4")))
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_444);
+                else
+                    ERR("Unrecognized profile %s\n", profile);
+            }
+            if ((level = gst_structure_get_string(info, "level")))
+            {
+                if (!(strcmp(level, "1")))
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_MPEG2_LEVEL, eAVEncH264VLevel1);
+                else if (!(strcmp(level, "1.3")))
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_MPEG2_LEVEL, eAVEncH264VLevel1_3);
+                else
+                    ERR("Unrecognized level %s\n", level);
+            }
+            gst_caps_set_simple(caps, "stream-format", G_TYPE_STRING, "byte-stream", NULL);
+            gst_caps_set_simple(caps, "alignment", G_TYPE_STRING, "au", NULL);
+            for (unsigned int i = 0; i < gst_caps_get_size(caps); i++)
+            {
+                GstStructure *structure = gst_caps_get_structure (caps, i);
+                gst_structure_remove_field(structure, "codec_data");
+            }
         }
         else if (!(strcmp(video_format, "mpeg")))
         {
@@ -524,32 +557,240 @@ IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps)
     return media_type;
 }
 
-IMFSample* mf_sample_from_gst_sample(GstSample *in)
+GstCaps *caps_from_media_type(IMFMediaType *type)
 {
-    GstBuffer *gst_buffer;
-    gsize buf_size;
-    BYTE *buf_data;
-    LONGLONG duration, time;
-    IMFMediaBuffer *mf_buffer;
+    GUID major_type;
+    GUID subtype;
+    GstCaps *output;
+
+    if (FAILED(IMFMediaType_GetMajorType(type, &major_type)))
+        return NULL;
+    if (FAILED(IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &subtype)))
+        return NULL;
+
+    if (IsEqualGUID(&major_type, &MFMediaType_Video))
+    {
+        const char *gst_type = NULL, *format = NULL, *stream_format = NULL, *alignment = NULL, *profile = NULL;
+        const char *level = NULL;
+        UINT64 frame_rate = 0, frame_size = 0;
+        DWORD *framerate_num = ((DWORD*)&frame_rate) + 1;
+        DWORD *framerate_den = ((DWORD*)&frame_rate);
+        DWORD *width = ((DWORD*)&frame_size) + 1;
+        DWORD *height = ((DWORD*)&frame_size);
+
+        IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &frame_rate);
+        IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &frame_size);
+
+        if (IsEqualGUID(&subtype, &MFVideoFormat_H264))
+        {
+            gst_type = "video/x-h264";
+            stream_format = "byte-stream";
+            alignment = "au";
+            enum eAVEncH264VProfile h264_profile;
+            enum eAVEncH264VLevel h264_level;
+
+            if (SUCCEEDED(IMFMediaType_GetUINT32(type, &MF_MT_MPEG2_PROFILE, &h264_profile)))
+            {
+                switch (h264_profile)
+                {
+                    case eAVEncH264VProfile_High:
+                        profile = "high";
+                        break;
+                    case eAVEncH264VProfile_444:
+                        profile = "high-4:4:4";
+                        break;
+                    default:
+                        ERR("Unknown profile %u\n", h264_profile);
+                }
+            }
+            if (SUCCEEDED(IMFMediaType_GetUINT32(type, &MF_MT_MPEG2_LEVEL, &h264_level)))
+            {
+                switch (h264_level)
+                {
+                    case eAVEncH264VLevel1:
+                        level = "1";
+                        break;
+                    case eAVEncH264VLevel1_3:
+                        level = "1.3";
+                        break;
+                    default:
+                        ERR("Unknown level %u\n", h264_level);
+                }
+            }
+        } else
+        if (IsEqualGUID(&subtype, &MFVideoFormat_NV12))
+        {
+            gst_type = "video/x-raw";
+            format = "NV12";
+        } else
+        {
+            ERR("Unrecognized subtype %s\n", debugstr_guid(&subtype));
+            return NULL;
+        }
+
+        output = gst_caps_new_empty_simple(gst_type);
+        if (format)
+            gst_caps_set_simple(output, "format", G_TYPE_STRING, format, NULL);
+        if (stream_format)
+            gst_caps_set_simple(output, "stream-format", G_TYPE_STRING, stream_format, NULL);
+        if (alignment)
+            gst_caps_set_simple(output, "alignment", G_TYPE_STRING, alignment, NULL);
+        if (frame_rate)
+            gst_caps_set_simple(output, "framerate", GST_TYPE_FRACTION, *framerate_num, *framerate_den, NULL);
+        if (frame_size)
+        {
+            gst_caps_set_simple(output, "width", G_TYPE_INT, *width, NULL);
+            gst_caps_set_simple(output, "height", G_TYPE_INT, *height, NULL);
+        }
+        if (profile)
+            gst_caps_set_simple(output, "profile", G_TYPE_STRING, profile, NULL);
+        if (level)
+            gst_caps_set_simple(output, "level", G_TYPE_STRING, level, NULL);
+        return output;
+    }
+
+    ERR("Unrecognized major type %s\n", debugstr_guid(&major_type));
+    return NULL;
+}
+
+/* IMFSample = GstBuffer
+   IMFBuffer = GstMemory */
+
+/* TODO: Future optimization will be to create a custom
+   IMFMediaBuffer wrapper around GstMemory, and to utilize
+   gst_memory_new_wrapped on IMFMediaBuffer data */
+
+IMFSample* mf_sample_from_gst_buffer(GstBuffer *gst_buffer)
+{
     IMFSample *out = NULL;
+    LONGLONG duration, time;
+    int buffer_count;
+    HRESULT hr;
 
-    gst_buffer = gst_sample_get_buffer(in);
-
-    buf_size = gst_buffer_get_size(gst_buffer);
+    if (FAILED(hr = MFCreateSample(&out)))
+        goto fail;
 
     duration = GST_BUFFER_DURATION(gst_buffer);
-    time = GST_BUFFER_DTS(gst_buffer);
+    time = GST_BUFFER_PTS(gst_buffer);
 
-    MFCreateMemoryBuffer(buf_size, &mf_buffer);
-    IMFMediaBuffer_Lock(mf_buffer, &buf_data, NULL, NULL);
-    gst_buffer_extract(gst_buffer, 0, buf_data, buf_size);
-    IMFMediaBuffer_Unlock(mf_buffer);
+    if (FAILED(IMFSample_SetSampleDuration(out, duration / 100)))
+        goto fail;
 
-    MFCreateSample(&out);
-    IMFSample_AddBuffer(out, mf_buffer);
-    IMFMediaBuffer_Release(mf_buffer);
-    IMFSample_SetSampleDuration(out, duration / 100);
-    IMFSample_SetSampleTime(out, time / 100);
+    if (FAILED(IMFSample_SetSampleTime(out, time / 100)))
+        goto fail;
+
+    buffer_count = gst_buffer_n_memory(gst_buffer);
+
+    for (unsigned int i = 0; i < buffer_count; i++)
+    {
+        GstMemory *memory = gst_buffer_get_memory(gst_buffer, i);;
+        GstMapInfo map_info;
+        IMFMediaBuffer *mf_buffer;
+        BYTE *buf_data;
+
+        defer {gst_memory_unref(memory);}
+
+        if (!(gst_memory_map(memory, &map_info, GST_MAP_READ)))
+        {
+            ERR("Failed to map memory from GstBuffer\n");
+            hr = ERROR_INTERNAL_ERROR;
+            goto fail;
+        }
+        defer {gst_memory_unmap(memory, &map_info);}
+
+        if (FAILED(hr = MFCreateMemoryBuffer(map_info.maxsize, &mf_buffer)))
+            goto fail;
+        defer {IMFMediaBuffer_Release(mf_buffer);}
+
+        if (FAILED(hr = IMFMediaBuffer_Lock(mf_buffer, &buf_data, NULL, NULL)))
+            goto fail;
+
+        memcpy(buf_data, map_info.data, map_info.size);
+
+        if (FAILED(hr = IMFMediaBuffer_Unlock(mf_buffer)))
+            goto fail;
+
+        if (FAILED(hr = IMFMediaBuffer_SetCurrentLength(mf_buffer, map_info.size)))
+            goto fail;
+
+        if (FAILED(hr = IMFSample_AddBuffer(out, mf_buffer)))
+            goto fail;
+    }
 
     return out;
+    fail:
+    ERR("Failed to copy IMFSample to GstBuffer, hr = %#x\n", hr);
+    IMFSample_Release(out);
+    return NULL;
+}
+
+GstBuffer* gst_buffer_from_mf_sample(IMFSample *mf_sample)
+{
+    GstBuffer *out = gst_buffer_new();
+    LONGLONG duration, time;
+    DWORD buffer_count;
+    HRESULT hr;
+
+    if (FAILED(hr = IMFSample_GetSampleDuration(mf_sample, &duration)))
+        goto fail;
+
+    if (FAILED(hr = IMFSample_GetSampleTime(mf_sample, &time)))
+        goto fail;
+
+    GST_BUFFER_DURATION(out) = duration;
+    GST_BUFFER_PTS(out) = time * 100;
+
+    if (FAILED(hr = IMFSample_GetBufferCount(mf_sample, &buffer_count)))
+        goto fail;
+
+    for (unsigned int i = 0; i < buffer_count; i++)
+    {
+        IMFMediaBuffer *mf_buffer;
+        DWORD buffer_max_size, buffer_size;
+        GstMemory *memory;
+        GstMapInfo map_info;
+        BYTE *buf_data;
+
+        if (FAILED(hr = IMFSample_GetBufferByIndex(mf_sample, i, &mf_buffer)))
+            goto fail;
+        defer {IMFMediaBuffer_Release(mf_buffer);}
+
+        if (FAILED(hr = IMFMediaBuffer_GetMaxLength(mf_buffer, &buffer_max_size)))
+            goto fail;
+
+        if (FAILED(hr = IMFMediaBuffer_GetCurrentLength(mf_buffer, &buffer_size)))
+            goto fail;
+
+        memory = gst_allocator_alloc(NULL, buffer_size, NULL);
+        gst_memory_resize(memory, 0, buffer_size);
+
+        if (!(gst_memory_map(memory, &map_info, GST_MAP_WRITE)))
+        {
+            ERR("Failed to map memory from GstBuffer\n");
+            hr = ERROR_INTERNAL_ERROR;
+            goto fail;
+        }
+
+        if (FAILED(hr = IMFMediaBuffer_Lock(mf_buffer, &buf_data, NULL, NULL)))
+            goto fail;
+
+        memcpy(map_info.data, buf_data, buffer_size);
+
+        if (FAILED(hr = IMFMediaBuffer_Unlock(mf_buffer)))
+            goto fail;
+
+        if (FAILED(hr = IMFMediaBuffer_SetCurrentLength(mf_buffer, buffer_size)))
+            goto fail;
+
+        gst_memory_unmap(memory, &map_info);
+
+        gst_buffer_append_memory(out, memory);
+    }
+
+    return out;
+
+    fail:
+    ERR("Failed to copy IMFSample to GstBuffer, hr = %#x\n", hr);
+    gst_buffer_unref(out);
+    return NULL;
 }

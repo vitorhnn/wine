@@ -50,8 +50,14 @@ extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
 
 IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps);
-IMFSample* mf_sample_from_gst_sample(GstSample *in);
+GstCaps *caps_from_media_type(IMFMediaType *type);
+IMFSample* mf_sample_from_gst_buffer(GstBuffer *in);
+GstBuffer* gst_buffer_from_mf_sample(IMFSample *in);
 
-HRESULT container_stream_handler_construct(REFIID riid, void **obj, const char *demuxer_name);
+enum source_type
+{
+    SOURCE_TYPE_MPEG_4,
+};
+HRESULT container_stream_handler_construct(REFIID riid, void **obj, enum source_type);
 
 #endif /* __GST_PRIVATE_INCLUDED__ */
