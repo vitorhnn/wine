@@ -120,6 +120,7 @@ struct source_reader
     enum media_source_state source_state;
     struct media_stream *streams;
     DWORD stream_count;
+    DWORD read_samples_queue;
     CRITICAL_SECTION cs;
 };
 
@@ -596,6 +597,7 @@ static ULONG WINAPI src_reader_Release(IMFSourceReader *iface)
         }
         heap_free(reader->streams);
         DeleteCriticalSection(&reader->cs);
+        MFUnlockWorkQueue(reader->read_samples_queue);
         heap_free(reader);
     }
 
@@ -913,7 +915,7 @@ static HRESULT WINAPI src_reader_SetCurrentMediaType(IMFSourceReader *iface, DWO
 
     if (!in_stream_type)
     {
-        WARN("Failed to find decoder matching request, source has decoder: %u.\n", decoder_found);
+        ERR("Failed to find decoder matching request, source has decoder: %u.\n", decoder_found);
         hr = decoder_found ? MF_E_INVALIDREQUEST : MF_E_TOPO_CODEC_NOT_FOUND;
         goto done;
     }
@@ -1086,41 +1088,55 @@ static HRESULT next_sample(struct media_stream *stream, IMFSample **out_sample, 
     *stream_flags = 0;
     *out_sample = NULL;
 
+    TRACE("Attemping to get the next sample\n");
+
     if (stream->decoder)
     {
         DWORD status;
         MFT_OUTPUT_DATA_BUFFER out_buffer = {};
 
+        TRACE("Stream has decoder\n");
+
         out_buffer.dwStreamID = 0;
         for(;;)
         {
-            if (list_empty(&stream->samples) && stream->state == STREAM_STATE_EOS)
+            if (list_empty(&stream->samples) && (stream->state == STREAM_STATE_EOS || drain))
             {
+                TRACE("We are out of samples from the source, drain\n");
                 hr = IMFTransform_ProcessMessage(stream->decoder, MFT_MESSAGE_COMMAND_DRAIN, 0);
                 if (FAILED(hr))
                     return hr;
             }
 
+            TRACE("Get next output\n");
             hr = IMFTransform_ProcessOutput(stream->decoder, 0, 1, &out_buffer, &status);
             if (hr == S_OK)
             {
+                TRACE("Got output, returning\n");
                 *out_sample = out_buffer.pSample;
                 return hr;
             }
             else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
             {
-                IMFSample *next_sample = drain ? media_stream_pop_sample(stream) : next_source_sample(stream);
+                IMFSample *next_sample;
+
+                TRACE("Decoder needs more samples, wait for the source reader\n");
+                next_sample = drain ? media_stream_pop_sample(stream) : next_source_sample(stream);
                 if (!next_sample)
                 {
                     *stream_flags = MF_SOURCE_READERF_ENDOFSTREAM;
                     return S_OK;
                 }
 
+                TRACE("Got the next sample, feed it\n");
+
                 hr = IMFTransform_ProcessInput(stream->decoder, 0, next_sample, 0);
                 if (hr == MF_E_NOTACCEPTING)
                     ERR("ProcessInput returned MF_E_NOTACCEPTING after ProcessOutput returned MF_E_TRANSFORM_NEED_MORE_INPUT\n");
                 if (hr != S_OK)
                     return hr;
+
+                TRACE("Now try again\n");
             }
             else
             {
@@ -1268,11 +1284,14 @@ static HRESULT WINAPI source_reader_read_samples_callback_Invoke(IMFAsyncCallbac
                 IMFSample_GetSampleTime(sample, &timestamp);
             }
 
-            return IMFSourceReaderCallback_OnReadSample(reader->async_callback, hr, i, stream_flags, timestamp, sample);
+            TRACE("Invoking read sample callback %p with (hr = %#x, stream_idx = %u, flags = %#x, timestamp %lu, sample %p)\n", reader->async_callback, hr, i, stream_flags, timestamp, sample);
+            hr = IMFSourceReaderCallback_OnReadSample(reader->async_callback, hr, i, stream_flags, timestamp, sample);
+            IMFSample_Release(sample);
+            return hr;
         }
     }
 
-    return E_FAIL;
+    return S_OK;
 }
 
 static const IMFAsyncCallbackVtbl read_samples_callback_vtbl =
@@ -1322,7 +1341,8 @@ static HRESULT source_reader_read_sample_async(struct source_reader *reader, DWO
     }
     LeaveCriticalSection(&stream->cs);
 
-    if (FAILED(hr = MFPutWorkItem(MF_MULTITHREADED_WORKQUEUE, &reader->read_samples_callback, (IUnknown*)stream->stream)))
+    TRACE("Dispatching read sample callback for stream %p\n", stream->stream);
+    if (FAILED(hr = MFPutWorkItem(reader->read_samples_queue, &reader->read_samples_callback, (IUnknown*)stream->stream)))
     {
         WARN("Failed to submit item hr = %#x\n", hr);
         return E_FAIL;
@@ -1521,6 +1541,8 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
     object->source = source;
     IMFMediaSource_AddRef(object->source);
     InitializeCriticalSection(&object->cs);
+    if (FAILED(hr = MFAllocateWorkQueue(&object->read_samples_queue)))
+        goto failed;
 
     if (FAILED(hr = IMFMediaSource_CreatePresentationDescriptor(object->source, &object->descriptor)))
         goto failed;

@@ -28,22 +28,32 @@ WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 #define defer auto void defer_cleanup(__LINE__)(void**); __attribute__((cleanup(defer_cleanup(__LINE__)))) void* defer_scopevar(__LINE__) = 0; void defer_cleanup(__LINE__)(void** unused_param_deadbeef)
 
 const GUID *h264_input_types[] = {&MFVideoFormat_H264};
-const GUID *h264_output_types[] = {&MFVideoFormat_NV12};
+const GUID *h264_output_types[] = {&MFVideoFormat_NV12, &MFVideoFormat_YV12};
 
-static struct decoder_functionality
+const GUID *aac_input_types[] = {&MFAudioFormat_AAC};
+const GUID *aac_output_types[] = {&MFAudioFormat_Float};
+
+static struct decoder_desc
 {
     const GUID *major_type;
     const GUID **input_types;
     unsigned int input_types_count;
     const GUID **output_types;
     unsigned int output_types_count;
-} decoders[] =
+} decoder_descs[] =
 {
     { /* DECODER_TYPE_H264 */
         &MFMediaType_Video,
         h264_input_types,
         1,
         h264_output_types,
+        2,
+    },
+    { /* DECODER_TYPE_AAC */
+        &MFMediaType_Audio,
+        aac_input_types,
+        1,
+        aac_output_types,
         1,
     }
 };
@@ -54,6 +64,7 @@ struct mf_decoder
     IMFAsyncCallback process_message_callback;
     LONG refcount;
     enum decoder_type type;
+    BOOL video;
     IMFMediaType *input_type, *output_type;
     BOOL valid_state;
     GstBus *bus;
@@ -234,7 +245,7 @@ static HRESULT WINAPI mf_decoder_GetInputAvailableType(IMFTransform *iface, DWOR
     if (id != 0)
         return MF_E_INVALIDSTREAMNUMBER;
 
-    if (index >= decoders[This->type].input_types_count)
+    if (index >= decoder_descs[This->type].input_types_count)
         return MF_E_NO_MORE_TYPES;
 
     if (FAILED(hr = MFCreateMediaType(&input_type)))
@@ -242,9 +253,9 @@ static HRESULT WINAPI mf_decoder_GetInputAvailableType(IMFTransform *iface, DWOR
 
     defer {IMFMediaType_Release(input_type);}
 
-    if (FAILED(hr = IMFMediaType_SetGUID(input_type, &MF_MT_MAJOR_TYPE, decoders[This->type].major_type)))
+    if (FAILED(hr = IMFMediaType_SetGUID(input_type, &MF_MT_MAJOR_TYPE, decoder_descs[This->type].major_type)))
         return hr;
-    if (FAILED(hr = IMFMediaType_SetGUID(input_type, &MF_MT_SUBTYPE, decoders[This->type].input_types[index])))
+    if (FAILED(hr = IMFMediaType_SetGUID(input_type, &MF_MT_SUBTYPE, decoder_descs[This->type].input_types[index])))
         return hr;
 
     *type = input_type;
@@ -268,7 +279,7 @@ static HRESULT WINAPI mf_decoder_GetOutputAvailableType(IMFTransform *iface, DWO
     if (!(This->input_type))
         return MF_E_TRANSFORM_TYPE_NOT_SET;
 
-    if (index >= decoders[This->type].output_types_count)
+    if (index >= decoder_descs[This->type].output_types_count)
         return MF_E_NO_MORE_TYPES;
 
     if (FAILED(hr = MFCreateMediaType(&output_type)))
@@ -279,9 +290,9 @@ static HRESULT WINAPI mf_decoder_GetOutputAvailableType(IMFTransform *iface, DWO
     /* TODO: This may need to be more fine tuned */
     if (FAILED(hr = IMFMediaType_CopyAllItems(This->input_type, (IMFAttributes*) output_type)))
         return hr;
-    if (FAILED(hr = IMFMediaType_SetGUID(output_type, &MF_MT_MAJOR_TYPE, decoders[This->type].major_type)))
+    if (FAILED(hr = IMFMediaType_SetGUID(output_type, &MF_MT_MAJOR_TYPE, decoder_descs[This->type].major_type)))
         return hr;
-    if (FAILED(hr = IMFMediaType_SetGUID(output_type, &MF_MT_SUBTYPE, decoders[This->type].output_types[index])))
+    if (FAILED(hr = IMFMediaType_SetGUID(output_type, &MF_MT_SUBTYPE, decoder_descs[This->type].output_types[index])))
         return hr;
 
     *type = output_type;
@@ -445,18 +456,21 @@ static HRESULT WINAPI mf_decoder_SetInputType(IMFTransform *iface, DWORD id, IMF
         if (FAILED(hr = IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &subtype)))
             return hr;
 
-        for (unsigned int i = 0; i < decoders[This->type].input_types_count; i++)
+        for (unsigned int i = 0; i < decoder_descs[This->type].input_types_count; i++)
         {
             UINT64 unused;
 
-            if (IsEqualGUID(&major_type, decoders[This->type].major_type) &&
-                IsEqualGUID(&subtype, decoders[This->type].input_types[i]))
+            if (IsEqualGUID(&major_type, decoder_descs[This->type].major_type) &&
+                IsEqualGUID(&subtype, decoder_descs[This->type].input_types[i]))
             {
-                if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &unused)))
-                    return hr;
+                if (This->video)
+                {
+                    if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &unused)))
+                        return hr;
 
-                if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &unused)))
-                    return hr;
+                    if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &unused)))
+                        return hr;
+                }
 
                 found = TRUE;
                 break;
@@ -511,7 +525,7 @@ static HRESULT WINAPI mf_decoder_SetOutputType(IMFTransform *iface, DWORD id, IM
     {
         /* validate the type */
 
-        for (unsigned int i = 0; i < decoders[This->type].output_types_count; i++)
+        for (unsigned int i = 0; i < decoder_descs[This->type].output_types_count; i++)
         {
             GUID major_type, subtype;
             UINT64 unused;
@@ -521,14 +535,17 @@ static HRESULT WINAPI mf_decoder_SetOutputType(IMFTransform *iface, DWORD id, IM
             if (FAILED(hr = IMFMediaType_GetGUID(type, &MF_MT_SUBTYPE, &subtype)))
                 return hr;
 
-            if (IsEqualGUID(&major_type, decoders[This->type].major_type) &&
-                IsEqualGUID(&subtype, decoders[This->type].output_types[i]))
+            if (IsEqualGUID(&major_type, decoder_descs[This->type].major_type) &&
+                IsEqualGUID(&subtype, decoder_descs[This->type].output_types[i]))
             {
-                if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &unused)))
-                    return hr;
+                if (This->video)
+                {
+                    if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_SIZE, &unused)))
+                        return hr;
 
-                if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &unused)))
-                    return hr;
+                    if (FAILED(hr = IMFMediaType_GetUINT64(type, &MF_MT_FRAME_RATE, &unused)))
+                        return hr;
+                }
 
                 break;
             }
@@ -834,7 +851,8 @@ static HRESULT WINAPI mf_decoder_ProcessOutput(IMFTransform *iface, DWORD flags,
         return MF_E_TRANSFORM_NEED_MORE_INPUT;
     This->output_counter--;
 
-    relevant_buffer->pSample = mf_sample_from_gst_buffer(gst_sample_get_buffer(buffer));
+    relevant_buffer->pSample = mf_sample_from_gst_buffer(gst_sample_get_buffer(buffer), This->output_type);
+    gst_sample_unref(buffer);
     relevant_buffer->dwStatus = S_OK;
     relevant_buffer->pEvents = NULL;
     *status = 0;
@@ -938,6 +956,7 @@ HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type typ
     if (!(This = heap_alloc_zero(sizeof(*This))))
         return E_OUTOFMEMORY;
     This->type = type;
+    This->video = decoder_descs[type].major_type == &MFMediaType_Video;
 
     InitializeCriticalSection(&This->state_cs);
     InitializeConditionVariable(&This->state_cv);
@@ -948,12 +967,12 @@ HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type typ
     gst_element_set_bus(This->container, This->bus);
 
     input_caps = gst_caps_new_empty();
-    for (unsigned int i = 0; i < decoders[type].input_types_count; i++)
+    for (unsigned int i = 0; i < decoder_descs[type].input_types_count; i++)
     {
         IMFMediaType *media_type;
         MFCreateMediaType(&media_type);
-        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, decoders[type].major_type);
-        IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, decoders[type].input_types[i]);
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, decoder_descs[type].major_type);
+        IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, decoder_descs[type].input_types[i]);
 
         input_caps = gst_caps_merge(input_caps, caps_from_media_type(media_type));
 
@@ -1052,7 +1071,7 @@ HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type typ
         goto fail;
     }
 
-    if (!(This->converter = gst_element_factory_make("videoconvert", NULL)))
+    if (!(This->converter = gst_element_factory_make(This->video ? "videoconvert" : "audioconvert", NULL)))
     {
         ERR("Failed to create videoconvert\n");
         hr = ERROR_INTERNAL_ERROR;
@@ -1088,6 +1107,7 @@ HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type typ
     }
 
     g_object_set(This->appsink, "emit-signals", TRUE, NULL);
+    g_object_set(This->appsink, "sync", FALSE, NULL);
     g_signal_connect(This->appsink, "new-sample", G_CALLBACK(decoder_new_sample_wrapper), This);
 
     /* Initialize the always available pads */

@@ -102,11 +102,15 @@ static void stream_dispatch_samples(struct media_stream *This)
     if (This->state != STREAM_RUNNING && This->state != STREAM_SHUTDOWN)
         return;
 
+    TRACE("Attempting to dispatch samples, source=%p stream=%p pending samples=%u\n", This->parent_source, This, This->pending_samples);
+
     EnterCriticalSection(&This->dispatch_samples_cs);
 
     LIST_FOR_EACH_ENTRY_SAFE(req, cursor2, &This->sample_requests, struct sample_request, entry)
     {
         IMFSample *sample;
+
+        TRACE("Processing sample request\n");
 
         if (This->state == STREAM_SHUTDOWN
         /* Not sure if this is correct: */
@@ -122,6 +126,7 @@ static void stream_dispatch_samples(struct media_stream *This)
 
         if (!(This->pending_samples))
         {
+            TRACE("no pending samples\n");
             break;
         }
 
@@ -139,7 +144,7 @@ static void stream_dispatch_samples(struct media_stream *This)
                 break;
             }
 
-            sample = mf_sample_from_gst_buffer(gst_sample_get_buffer(gst_sample));
+            sample = mf_sample_from_gst_buffer(gst_sample_get_buffer(gst_sample), NULL);
         }
 
         if (req->token)
@@ -158,6 +163,8 @@ static void stream_dispatch_samples(struct media_stream *This)
 
         This->pending_samples--;
     }
+
+    TRACE("Done looking at sample requests\n");
 
     if (This->eos && !This->pending_samples && This->state == STREAM_RUNNING)
     {
@@ -535,6 +542,7 @@ static HRESULT media_stream_constructor(struct media_source *source, GstPad *pad
     /* Setup elements, but don't link to the demuxer (it isn't selected by default) */
 
     g_object_set(This->appsink, "emit-signals", TRUE, NULL);
+    g_object_set(This->appsink, "sync", FALSE, NULL);
     g_signal_connect(This->appsink, "new-sample", G_CALLBACK(stream_new_sample_wrapper), This);
     g_signal_connect(This->appsink, "eos", G_CALLBACK(stream_eos_wrapper), This);
 
@@ -768,6 +776,12 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
 
     This->state = SOURCE_RUNNING;
     gst_element_set_state(This->container, GST_STATE_PLAYING);
+    int ret = gst_element_get_state(This->container, NULL, NULL, -1);
+    if (ret == GST_STATE_CHANGE_FAILURE)
+    {
+        ERR("Failed to play source.\n");
+        return E_FAIL;
+    }
 
     IMFMediaEventQueue_QueueEventParamVar(This->event_queue, MESourceStarted, &GUID_NULL, S_OK, &empty_var);
 
@@ -1020,9 +1034,10 @@ static gboolean query_bytestream(GstPad *pad, GstObject *parent, GstQuery *query
                 gst_query_set_duration (query, GST_FORMAT_PERCENT, GST_FORMAT_PERCENT_MAX);
                 return TRUE;
             }
-            ret = gst_pad_query_convert (pad, GST_FORMAT_BYTES, bytestream_len, format, &duration);
-            gst_query_set_duration(query, format, duration);
-            return ret;
+            //ret = gst_pad_query_convert (pad, GST_FORMAT_BYTES, bytestream_len, format, &duration);
+            //gst_query_set_duration(query, format, duration);
+            //return ret;
+            return FALSE;
         }
         case GST_QUERY_SEEKING:
         {
@@ -1151,6 +1166,8 @@ static void source_stream_added(GstElement *element, GstPad *pad, gpointer user)
                 {
                     ERR("Error linking demuxer to stream %d\n", err);
                 }
+                /* sometimes the bin fails to set the state */
+                gst_element_set_state(existing_stream->appsink, GST_STATE_PLAYING);
             }
             goto leave;
         }
@@ -1188,6 +1205,8 @@ static void source_stream_removed(GstElement *element, GstPad *pad, gpointer use
 
     if (stream)
     {
+        TRACE("Stream %p of Source %p removed\n", stream, stream->parent_source);
+
         if (stream->their_src != pad)
         {
             ERR("assert: unexpected pad/user combination!!!");
@@ -1295,6 +1314,7 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
     }
 
     demuxer_factory = g_list_first(demuxer_list_two)->data;
+    gst_object_ref(demuxer_factory);
     TRACE("Found demuxer %s.\n", GST_ELEMENT_NAME(demuxer_factory));
 
     gst_plugin_feature_list_free(demuxer_list_two);
@@ -1349,7 +1369,7 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
     g_signal_connect(This->demuxer, "pad-removed", G_CALLBACK(source_stream_removed_wrapper), This);
     g_signal_connect(This->demuxer, "no-more-pads", G_CALLBACK(source_all_streams_wrapper), This);
 
-    gst_element_set_state(This->container, GST_STATE_PLAYING);
+    gst_element_set_state(This->container, GST_STATE_PAUSED);
     ret = gst_element_get_state(This->container, NULL, NULL, -1);
     if (ret == GST_STATE_CHANGE_FAILURE)
     {
@@ -1362,18 +1382,10 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
     CloseHandle(This->init_complete_event);
     This->init_complete_event = NULL;
 
-    gst_pad_set_active(This->my_src, 1);
-    gst_element_set_state(This->container, GST_STATE_READY);
-    if (!(This->pres_desc))
-    {
-        hr = E_FAIL;
-        goto fail;
-    }
-
     /* miscelaneous presentation descriptor setup */
     {
         IMFAttributes *byte_stream_attributes;
-        gint64 presentation_time;
+        gint64 total_pres_time = 0;
 
         if (SUCCEEDED(IMFByteStream_QueryInterface(This->byte_stream, &IID_IMFAttributes, (void **)&byte_stream_attributes)))
         {
@@ -1387,14 +1399,35 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
             IMFAttributes_Release(byte_stream_attributes);
         }
 
-        if (gst_element_query_duration(This->demuxer, GST_FORMAT_TIME, &presentation_time))
+        for (unsigned int i = 0; i < This->stream_count; i++)
         {
-            IMFPresentationDescriptor_SetUINT64(This->pres_desc, &MF_PD_DURATION, presentation_time / 100);
+            GstQuery *query = gst_query_new_duration(GST_FORMAT_TIME);
+            if (gst_pad_query(This->streams[i]->their_src, query))
+            {
+                gint64 stream_pres_time;
+                gst_query_parse_duration(query, NULL, &stream_pres_time);
+
+                TRACE("Stream %u has duration %lu\n", i, stream_pres_time);
+
+                if (stream_pres_time > total_pres_time)
+                    total_pres_time = stream_pres_time;
+            }
+            else
+            {
+                WARN("Unable to get presentation time of stream %u\n", i);
+            }
         }
-        else
-        {
-            WARN("Unable to get presentation time\n");
-        }
+
+        if (This->stream_count)
+            IMFPresentationDescriptor_SetUINT64(This->pres_desc, &MF_PD_DURATION, total_pres_time / 100);
+    }
+
+    gst_pad_set_active(This->my_src, 1);
+    gst_element_set_state(This->container, GST_STATE_READY);
+    if (!(This->pres_desc))
+    {
+        hr = E_FAIL;
+        goto fail;
     }
 
     This->state = SOURCE_STOPPED;

@@ -44,6 +44,15 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 
+/* FOURCC to string conversion for debug messages */
+static const char *debugstr_fourcc(DWORD fourcc)
+{
+    if (!fourcc) return "'null'";
+    return wine_dbg_sprintf ("\'%c%c%c%c\'",
+        (char)(fourcc), (char)(fourcc >> 8),
+        (char)(fourcc >> 16), (char)(fourcc >> 24));
+}
+
 static HRESULT heap_strdupW(const WCHAR *str, WCHAR **dest)
 {
     HRESULT hr = S_OK;
@@ -8778,9 +8787,14 @@ HRESULT WINAPI MFGetStrideForBitmapInfoHeader(DWORD format, DWORD width, LONG *s
             *stride = width;
             break;
         }
+        case MAKEFOURCC('Y','V','1','2'):
+        {
+            *stride = width;
+            break;
+        }
         default:
         {
-            FIXME("Unrecognized format %u\n", format);
+            FIXME("Unrecognized format %s\n", debugstr_fourcc(format));
             return E_NOTIMPL;
         }
     }

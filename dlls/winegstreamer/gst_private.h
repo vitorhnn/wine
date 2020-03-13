@@ -52,12 +52,13 @@ extern HRESULT mfplat_can_unload_now(void) DECLSPEC_HIDDEN;
 
 IMFMediaType* mfplat_media_type_from_caps(GstCaps *caps);
 GstCaps *caps_from_media_type(IMFMediaType *type);
-IMFSample* mf_sample_from_gst_buffer(GstBuffer *in);
+IMFSample* mf_sample_from_gst_buffer(GstBuffer *in, IMFMediaType *buffer_type);
 GstBuffer* gst_buffer_from_mf_sample(IMFSample *in);
 
 enum decoder_type
 {
     DECODER_TYPE_H264,
+    DECODER_TYPE_AAC,
 };
 HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type);
 enum source_type

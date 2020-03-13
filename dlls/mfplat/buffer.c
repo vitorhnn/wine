@@ -24,6 +24,15 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 
+/* FOURCC to string conversion for debug messages */
+static const char *debugstr_fourcc(DWORD fourcc)
+{
+    if (!fourcc) return "'null'";
+    return wine_dbg_sprintf ("\'%c%c%c%c\'",
+        (char)(fourcc), (char)(fourcc >> 8),
+        (char)(fourcc >> 16), (char)(fourcc >> 24));
+}
+
 struct memory_buffer
 {
     IMFMediaBuffer IMFMediaBuffer_iface;
@@ -32,6 +41,20 @@ struct memory_buffer
     BYTE *data;
     DWORD max_length;
     DWORD current_length;
+};
+
+struct surface_buffer
+{
+    IMFMediaBuffer IMFMediaBuffer_iface;
+    IMF2DBuffer IMF2DBuffer_iface;
+    LONG refcount;
+
+    BYTE *data;
+    DWORD length;
+    LONG pitch;
+    DWORD height;
+    DWORD format;
+    BOOL bottom_up;
 };
 
 enum sample_prop_flags
@@ -57,6 +80,16 @@ struct sample
 static inline struct memory_buffer *impl_from_IMFMediaBuffer(IMFMediaBuffer *iface)
 {
     return CONTAINING_RECORD(iface, struct memory_buffer, IMFMediaBuffer_iface);
+}
+
+static inline struct surface_buffer *surface_buffer_impl_from_IMFMediaBuffer(IMFMediaBuffer *iface)
+{
+    return CONTAINING_RECORD(iface, struct surface_buffer, IMFMediaBuffer_iface);
+}
+
+static inline struct surface_buffer *impl_from_IMF2DBuffer(IMF2DBuffer *iface)
+{
+    return CONTAINING_RECORD(iface, struct surface_buffer, IMF2DBuffer_iface);
 }
 
 static inline struct sample *impl_from_IMFSample(IMFSample *iface)
@@ -237,6 +270,292 @@ HRESULT WINAPI MFCreateAlignedMemoryBuffer(DWORD max_length, DWORD alignment, IM
     TRACE("%u, %u, %p.\n", max_length, alignment, buffer);
 
     return create_memory_buffer(max_length, alignment, buffer);
+}
+
+static HRESULT WINAPI surface_buffer_QueryInterface(IMFMediaBuffer *iface, REFIID riid, void **out)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+
+    TRACE("%p, %s, %p.\n", iface, debugstr_guid(riid), out);
+
+    if (IsEqualIID(riid, &IID_IMFMediaBuffer) ||
+            IsEqualIID(riid, &IID_IUnknown))
+    {
+        *out = &buffer->IMFMediaBuffer_iface;
+    }
+    else if (IsEqualIID(riid, &IID_IMF2DBuffer))
+    {
+        *out = &buffer->IMF2DBuffer_iface;
+    }
+    else
+    {
+        FIXME("(%s, %p)\n", debugstr_guid(riid), out);
+        *out = NULL;
+        return E_NOINTERFACE;
+    }
+
+    IUnknown_AddRef((IUnknown*)*out);
+    return S_OK;
+}
+
+static ULONG WINAPI surface_buffer_AddRef(IMFMediaBuffer *iface)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+    ULONG refcount = InterlockedIncrement(&buffer->refcount);
+
+    TRACE("%p, refcount %u.\n", buffer, refcount);
+
+    return refcount;
+}
+
+static ULONG WINAPI surface_buffer_Release(IMFMediaBuffer *iface)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+    ULONG refcount = InterlockedDecrement(&buffer->refcount);
+
+    TRACE("%p, refcount %u.\n", iface, refcount);
+
+    if (!refcount)
+    {
+        heap_free(buffer->data);
+        heap_free(buffer);
+    }
+
+    return refcount;
+}
+
+static HRESULT WINAPI surface_buffer_Lock(IMFMediaBuffer *iface, BYTE **data, DWORD *max_length, DWORD *current_length)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+
+    TRACE("%p, %p %p, %p.\n", iface, data, max_length, current_length);
+
+    *data = buffer->data;
+    if (max_length)
+        *max_length = buffer->length;
+    if (current_length)
+        *current_length = buffer->length;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI surface_buffer_Unlock(IMFMediaBuffer *iface)
+{
+    TRACE("%p.\n", iface);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI surface_buffer_GetCurrentLength(IMFMediaBuffer *iface, DWORD *current_length)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+
+    TRACE("%p.\n", iface);
+
+    *current_length = buffer->length;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI surface_buffer_SetCurrentLength(IMFMediaBuffer *iface, DWORD current_length)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+
+    TRACE("%p, %u.\n", iface, current_length);
+
+    if (current_length != buffer->length)
+        FIXME("Application tried to set invalid length, (%u != %u)\n", current_length, buffer->length);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI surface_buffer_GetMaxLength(IMFMediaBuffer *iface, DWORD *max_length)
+{
+    struct surface_buffer *buffer = surface_buffer_impl_from_IMFMediaBuffer(iface);
+
+    TRACE("%p, %p.\n", iface, max_length);
+
+    *max_length = buffer->length;
+
+    return S_OK;
+}
+
+static const IMFMediaBufferVtbl surfacebuffervtbl =
+{
+    surface_buffer_QueryInterface,
+    surface_buffer_AddRef,
+    surface_buffer_Release,
+    surface_buffer_Lock,
+    surface_buffer_Unlock,
+    surface_buffer_GetCurrentLength,
+    surface_buffer_SetCurrentLength,
+    surface_buffer_GetMaxLength,
+};
+
+static HRESULT WINAPI twodim_buffer_QueryInterface(IMF2DBuffer *iface, REFIID riid, void **out)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+    return IMFMediaBuffer_QueryInterface(&buffer->IMFMediaBuffer_iface, riid, out);
+}
+
+static ULONG WINAPI twodim_buffer_AddRef(IMF2DBuffer *iface)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+    return IMFMediaBuffer_AddRef(&buffer->IMFMediaBuffer_iface);
+}
+
+static ULONG WINAPI twodim_buffer_Release(IMF2DBuffer *iface)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+    return IMFMediaBuffer_Release(&buffer->IMFMediaBuffer_iface);
+}
+
+static HRESULT WINAPI twodim_buffer_Lock2D(IMF2DBuffer *iface, BYTE **scanline, LONG *pitch)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+
+    TRACE("%p, %p, %p\n", iface, scanline, pitch);
+
+    *pitch = buffer->pitch;
+
+    if (buffer->pitch < 0)
+        *scanline = buffer->data + buffer->length + buffer->pitch;
+    else
+        *scanline = buffer->data + buffer->pitch;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI twodim_buffer_Unlock2D(IMF2DBuffer *iface)
+{
+    TRACE("%p\n", iface);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI twodim_buffer_GetScanline0AndPitch(IMF2DBuffer *iface, BYTE **scanline, LONG *pitch)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+
+    TRACE("%p, %p, %p\n", iface, scanline, pitch);
+
+    *pitch = buffer->pitch;
+
+    if (buffer->pitch < 0)
+        *scanline = buffer->data + buffer->length + buffer->pitch;
+    else
+        *scanline = buffer->data + buffer->pitch;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI twodim_buffer_IsContiguousFormat(IMF2DBuffer *iface, BOOL *contiguous)
+{
+    TRACE("%p, %p\n", iface, contiguous);
+
+    return TRUE;
+}
+
+static HRESULT WINAPI twodim_buffer_GetContiguousLength(IMF2DBuffer *iface, DWORD *length)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+
+    TRACE("%p, %p\n", iface, length);
+
+    *length = buffer->length;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI twodim_buffer_ContiguousCopyTo(IMF2DBuffer *iface, BYTE *buf, DWORD size)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+
+    TRACE("%p, %p, %u\n", iface, buf, size);
+
+    if (size != buffer->length)
+        return E_INVALIDARG;
+
+    memcpy(buf, buffer->data, size);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI twodim_buffer_ContiguousCopyFrom(IMF2DBuffer *iface, const BYTE *buf, DWORD size)
+{
+    struct surface_buffer *buffer = impl_from_IMF2DBuffer(iface);
+
+    TRACE("%p, %p, %u\n", iface, buf, size);
+
+    memcpy(buffer->data, buf, min(size, buffer->length));
+
+    return S_OK;
+}
+
+static const IMF2DBufferVtbl surface2dbuffervtbl =
+{
+    twodim_buffer_QueryInterface,
+    twodim_buffer_AddRef,
+    twodim_buffer_Release,
+    twodim_buffer_Lock2D,
+    twodim_buffer_Unlock2D,
+    twodim_buffer_GetScanline0AndPitch,
+    twodim_buffer_IsContiguousFormat,
+    twodim_buffer_GetContiguousLength,
+    twodim_buffer_ContiguousCopyTo,
+    twodim_buffer_ContiguousCopyFrom,
+};
+
+HRESULT WINAPI MFCreate2DMediaBuffer(DWORD width, DWORD height, DWORD format, BOOL bottom_up, IMFMediaBuffer **buffer)
+{
+    struct surface_buffer *object;
+    LONG pitch;
+    HRESULT hr;
+
+    TRACE("%u, %u, %s, %u %p\n", width, height, debugstr_fourcc(format), bottom_up, buffer);
+
+    if (!buffer)
+        return E_INVALIDARG;
+
+    hr = MFGetStrideForBitmapInfoHeader(format, width, &pitch);
+    if (FAILED(hr))
+        return hr;
+
+    object = heap_alloc(sizeof(*object));
+    if (!object)
+        return E_OUTOFMEMORY;
+
+    switch (format)
+    {
+        case MAKEFOURCC('N','V','1','2'):
+        {
+            object->length = abs(pitch) * height * 1.5;
+            object->data = heap_alloc(abs(pitch) * height * 1.5);
+            if (!object->data)
+            {
+                heap_free(object);
+                return E_OUTOFMEMORY;
+            }
+            break;
+        }
+        default:
+            ERR("Unhandled format %s\n", debugstr_fourcc(format));
+            heap_free(object);
+            return E_NOTIMPL;
+    }
+
+    object->pitch = pitch;
+    object->height = height;
+    object->format = format;
+    object->bottom_up = bottom_up;
+
+    object->IMFMediaBuffer_iface.lpVtbl = &surfacebuffervtbl;
+    object->IMF2DBuffer_iface.lpVtbl = &surface2dbuffervtbl;
+    object->refcount = 1;
+
+    *buffer = &object->IMFMediaBuffer_iface;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI sample_QueryInterface(IMFSample *iface, REFIID riid, void **out)

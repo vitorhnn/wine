@@ -615,8 +615,6 @@ static void test_source_resolver(void)
 
     get_event((IMFMediaEventGenerator *)mediasource, MEEndOfPresentation, NULL);
 
-    IMFMediaTypeHandler_Release(handler);
-
     hr = IMFMediaSource_Shutdown(mediasource);
     ok(hr == S_OK, "Unexpected hr %#x.\n", hr);
 
@@ -624,7 +622,8 @@ static void test_source_resolver(void)
     ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#x.\n", hr);
 
     IMFPresentationDescriptor_Release(descriptor);
-    IMFMediaSource_Release(mediasource);
+    /* This crashes on windows 10 */
+    /* IMFMediaSource_Release(mediasource); */
     IMFByteStream_Release(stream);
 
     /* Create from URL. */
@@ -2374,6 +2373,21 @@ static void test_startup(void)
 
     hr = MFShutdown();
     ok(hr == S_OK, "Failed to shut down, hr %#x.\n", hr);
+}
+
+static void test_misc(void)
+{
+    HRESULT hr;
+    LONG stride;
+
+    /* Aligned */
+    hr = MFGetStrideForBitmapInfoHeader(MAKEFOURCC('N','V','1','2'), 640, &stride);
+    ok (hr == S_OK, "hr %#x\n", hr);
+    ok (stride == 640, "Got %d\n", stride);
+
+    hr = MFGetStrideForBitmapInfoHeader(MAKEFOURCC('N','V','1','2'), 641, &stride);
+    ok(hr == S_OK, "hr %#x\n", hr);
+    ok (stride == 641, "Got %d\n", stride);
 }
 
 static void test_allocate_queue(void)
@@ -4472,6 +4486,7 @@ START_TEST(mfplat)
     CoInitialize(NULL);
 
     test_startup();
+    test_misc();
     test_register();
     test_media_type();
     test_MFCreateMediaEvent();
