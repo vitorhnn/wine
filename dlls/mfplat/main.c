@@ -5911,7 +5911,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
 
     IUnknown_Release(handler.handler);
 
-    if (SUCCEEDED(queued_result->hr))
     {
         RTWQASYNCRESULT *data = (RTWQASYNCRESULT *)inner_result;
 
@@ -5940,8 +5939,6 @@ static HRESULT resolver_handler_end_create(struct source_resolver *resolver, enu
             }
         }
     }
-    else
-        heap_free(queued_result);
 
     return S_OK;
 }
