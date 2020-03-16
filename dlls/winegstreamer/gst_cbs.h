@@ -54,6 +54,12 @@ enum CB_TYPE {
     SOURCE_ALL_STREAMS,
     STREAM_NEW_SAMPLE,
     MEDIA_SOURCE_MAX,
+    ACTIVATE_PUSH_MODE,
+    QUERY_INPUT_SRC,
+    DECODER_NEW_SAMPLE,
+    WATCH_DECODER_BUS,
+    DECODER_PAD_ADDED,
+    MF_DECODE_MAX,
 };
 
 struct cb_data {
@@ -143,6 +149,12 @@ struct cb_data {
             gpointer user;
             GstFlowReturn ret;
         } new_sample_data;
+        struct chain_data {
+            GstPad *pad;
+            GstObject *parent;
+            GstBuffer *buffer;
+            GstFlowReturn ret;
+        } chain_data;
     } u;
 
     int finished;
@@ -154,6 +166,7 @@ struct cb_data {
 void mark_wine_thread(void) DECLSPEC_HIDDEN;
 void perform_cb_gstdemux(struct cb_data *data) DECLSPEC_HIDDEN;
 void perform_cb_media_source(struct cb_data *data) DECLSPEC_HIDDEN;
+void perform_cb_mf_decode(struct cb_data *data) DECLSPEC_HIDDEN;
 
 GstBusSyncReply watch_bus_wrapper(GstBus *bus, GstMessage *msg, gpointer user) DECLSPEC_HIDDEN;
 void existing_new_pad_wrapper(GstElement *bin, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
@@ -179,5 +192,10 @@ void source_stream_added_wrapper(GstElement *bin, GstPad *pad, gpointer user) DE
 void source_stream_removed_wrapper(GstElement *element, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
 void source_all_streams_wrapper(GstElement *element, gpointer user) DECLSPEC_HIDDEN;
 GstFlowReturn stream_new_sample_wrapper(GstElement *appsink, gpointer user) DECLSPEC_HIDDEN;
+gboolean activate_push_mode_wrapper(GstPad *pad, GstObject *parent, GstPadMode mode, gboolean activate) DECLSPEC_HIDDEN;
+gboolean query_input_src_wrapper(GstPad *pad, GstObject *parent, GstQuery *query) DECLSPEC_HIDDEN;
+GstBusSyncReply watch_decoder_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user) DECLSPEC_HIDDEN;
+GstFlowReturn decoder_new_sample_wrapper(GstElement *appsink, gpointer user) DECLSPEC_HIDDEN;
+void decoder_pad_added_wrapper(GstElement *element, GstPad *Pad, gpointer user) DECLSPEC_HIDDEN;
 
 #endif
