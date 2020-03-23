@@ -1631,6 +1631,10 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
         if (FAILED(hr))
             break;
 
+        hr = IMFPresentationDescriptor_SelectStream(object->descriptor, i);
+        if (FAILED(hr))
+            break;
+
         InitializeCriticalSection(&object->streams[i].cs);
         InitializeConditionVariable(&object->streams[i].sample_event);
         list_init(&object->streams[i].samples);
