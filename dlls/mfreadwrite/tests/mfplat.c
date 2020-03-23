@@ -562,11 +562,18 @@ static ULONG WINAPI async_callback_Release(IMFSourceReaderCallback *iface)
     return refcount;
 }
 
+static HANDLE on_read_sample_event = INVALID_HANDLE_VALUE;
+
 static HRESULT WINAPI async_callback_OnReadSample(IMFSourceReaderCallback *iface, HRESULT hr, DWORD stream_index,
         DWORD stream_flags, LONGLONG timestamp, IMFSample *sample)
 {
-    ok(0, "Unexpected call.\n");
-    return E_NOTIMPL;
+    ok(hr == S_OK, "Unexpected hr %#x\n", hr);
+    ok(!stream_flags, "Unexpected stream flags %#x.\n", stream_flags);
+    ok(!!sample, "Didn't receive sample.\n");
+
+    SetEvent(on_read_sample_event);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI async_callback_OnFlush(IMFSourceReaderCallback *iface, DWORD stream_index)
@@ -950,6 +957,15 @@ todo_wine
 
     hr = IMFSourceReader_ReadSample(reader, 0, 0, NULL, NULL, NULL, &sample);
     ok(hr == E_INVALIDARG, "Unexpected hr %#x.\n", hr);
+
+    on_read_sample_event = CreateEventA(NULL, FALSE, FALSE, NULL);
+
+    hr = IMFSourceReader_ReadSample(reader, 0, 0, NULL, NULL, NULL, NULL);
+    ok(hr == S_OK, "Unexpected hr %#x.\n", hr);
+
+    ok(WaitForSingleObject(on_read_sample_event, 3000) == WAIT_OBJECT_0, "Sample never triggered.\n");
+
+    CloseHandle(on_read_sample_event);
 
     IMFSourceReader_Release(reader);
 }

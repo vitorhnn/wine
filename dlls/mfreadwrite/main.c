@@ -90,6 +90,8 @@ enum media_source_state
     SOURCE_STATE_STARTED,
 };
 
+static const GUID WINE_CALLBACK_STATE_STREAM = {0xb82e2aa5, 0x1b14, 0x4578, {0x98, 0x6b, 0x74, 0xfa, 0x51, 0xcc, 0xc1, 0x58}};
+
 struct media_stream
 {
     IMFMediaStream *stream;
@@ -102,6 +104,8 @@ struct media_stream
     enum media_stream_state state;
     BOOL selected;
     BOOL presented;
+    DWORD read_samples_queue;
+    IMFAttributes *callback_state;
 };
 
 struct source_reader
@@ -109,6 +113,7 @@ struct source_reader
     IMFSourceReader IMFSourceReader_iface;
     IMFAsyncCallback source_events_callback;
     IMFAsyncCallback stream_events_callback;
+    IMFAsyncCallback read_samples_callback;
     LONG refcount;
     IMFMediaSource *source;
     IMFPresentationDescriptor *descriptor;
@@ -141,6 +146,11 @@ static struct source_reader *impl_from_source_callback_IMFAsyncCallback(IMFAsync
 static struct source_reader *impl_from_stream_callback_IMFAsyncCallback(IMFAsyncCallback *iface)
 {
     return CONTAINING_RECORD(iface, struct source_reader, stream_events_callback);
+}
+
+static struct source_reader *impl_from_read_samples_callback_IMFAsyncCallback(IMFAsyncCallback *iface)
+{
+    return CONTAINING_RECORD(iface, struct source_reader, read_samples_callback);
 }
 
 static inline struct sink_writer *impl_from_IMFSinkWriter(IMFSinkWriter *iface)
@@ -683,6 +693,11 @@ static ULONG WINAPI src_reader_Release(IMFSourceReader *iface)
                 list_remove(&ptr->entry);
                 heap_free(ptr);
             }
+
+            if (stream->read_samples_queue)
+                MFUnlockWorkQueue(stream->read_samples_queue);
+            if (stream->callback_state)
+                IMFAttributes_Release(stream->callback_state);
         }
         heap_free(reader->streams);
         DeleteCriticalSection(&reader->cs);
@@ -1225,11 +1240,141 @@ static HRESULT source_reader_read_sample(struct source_reader *reader, DWORD ind
     return hr;
 }
 
+static HRESULT WINAPI source_reader_read_samples_callback_QueryInterface(IMFAsyncCallback *iface,
+        REFIID riid, void **obj)
+{
+    TRACE("%p, %s, %p.\n", iface, debugstr_guid(riid), obj);
+
+    if (IsEqualIID(riid, &IID_IMFAsyncCallback) ||
+            IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = iface;
+        IMFAsyncCallback_AddRef(iface);
+        return S_OK;
+    }
+
+    WARN("Unsupported %s.\n", debugstr_guid(riid));
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI source_reader_read_samples_callback_AddRef(IMFAsyncCallback *iface)
+{
+    struct source_reader *reader = impl_from_read_samples_callback_IMFAsyncCallback(iface);
+    return IMFSourceReader_AddRef(&reader->IMFSourceReader_iface);
+}
+
+static ULONG WINAPI source_reader_read_samples_callback_Release(IMFAsyncCallback *iface)
+{
+    struct source_reader *reader = impl_from_read_samples_callback_IMFAsyncCallback(iface);
+    return IMFSourceReader_Release(&reader->IMFSourceReader_iface);
+}
+
+static HRESULT WINAPI source_reader_read_samples_callback_GetParameters(IMFAsyncCallback *iface,
+        DWORD *flags, DWORD *queue)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI source_reader_read_samples_callback_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
+{
+    struct source_reader *reader = impl_from_read_samples_callback_IMFAsyncCallback(iface);
+    IMFAttributes *state = (IMFAttributes *) IMFAsyncResult_GetStateNoAddRef(result);
+    UINT64 stream_pointer;
+    struct media_stream *stream;
+    DWORD stream_idx;
+    IMFSample *sample = NULL;
+    DWORD stream_flags;
+    LONGLONG timestamp = 0;
+    HRESULT hr;
+
+    TRACE("%p, %p\n", iface, result);
+
+    if (FAILED(hr = IMFAttributes_GetUINT64(state, &WINE_CALLBACK_STATE_STREAM, &stream_pointer)))
+        return hr;
+    stream = (struct media_stream *)stream_pointer;
+    stream_idx = stream - reader->streams;
+
+    EnterCriticalSection(&stream->cs);
+
+    while (list_empty(&stream->samples) && stream->state != STREAM_STATE_EOS)
+    {
+        if (stream->stream)
+        {
+            if (FAILED(hr = IMFMediaStream_RequestSample(stream->stream, NULL)))
+                WARN("Sample request failed, hr %#x.\n", hr);
+        }
+        SleepConditionVariableCS(&stream->sample_event, &stream->cs, INFINITE);
+    }
+
+    sample = media_stream_pop_sample(stream, &stream_flags);
+
+    LeaveCriticalSection(&stream->cs);
+
+    if (sample)
+    {
+        IMFSample_GetSampleTime(sample, &timestamp);
+    }
+
+    TRACE("Invoking read sample callback %p with (hr = %#x, stream_idx = %u, flags = %#x, timestamp %lu, sample %p)\n", reader->async_callback, hr, stream_idx, stream_flags, timestamp, sample);
+    hr = IMFSourceReaderCallback_OnReadSample(reader->async_callback, hr, stream->id, stream_flags, timestamp, sample);
+
+    if (sample)
+        IMFSample_Release(sample);
+    return hr;
+}
+
+static const IMFAsyncCallbackVtbl read_samples_callback_vtbl =
+{
+    source_reader_read_samples_callback_QueryInterface,
+    source_reader_read_samples_callback_AddRef,
+    source_reader_read_samples_callback_Release,
+    source_reader_read_samples_callback_GetParameters,
+    source_reader_read_samples_callback_Invoke,
+};
+
 static HRESULT source_reader_read_sample_async(struct source_reader *reader, DWORD index, DWORD flags)
 {
-    FIXME("Async mode is not implemented.\n");
+    struct media_stream *stream;
+    DWORD stream_index;
+    HRESULT hr = S_OK;
+    BOOL selected;
 
-    return E_NOTIMPL;
+    switch (index)
+    {
+        case MF_SOURCE_READER_FIRST_VIDEO_STREAM:
+            stream_index = reader->first_video_stream_index;
+            break;
+        case MF_SOURCE_READER_FIRST_AUDIO_STREAM:
+            stream_index = reader->first_audio_stream_index;
+            break;
+        case MF_SOURCE_READER_ANY_STREAM:
+            FIXME("Non-specific requests are not supported.\n");
+            return E_NOTIMPL;
+        default:
+            stream_index = index;
+    }
+
+    /* Can't read from deselected streams. */
+    if (SUCCEEDED(hr = source_reader_get_stream_selection(reader, stream_index, &selected)) && !selected)
+        return hr;
+
+    stream = &reader->streams[stream_index];
+
+    EnterCriticalSection(&reader->cs);
+    if (SUCCEEDED(hr = source_reader_start_source(reader)))
+    {
+        TRACE("Dispatching read sample callback for stream %p\n", stream);
+        if (FAILED(hr = MFPutWorkItem(stream->read_samples_queue, &reader->read_samples_callback, (IUnknown *)stream->callback_state)))
+        {
+            WARN("Failed to submit item hr = %#x\n", hr);
+            LeaveCriticalSection(&reader->cs);
+            return hr;
+        }
+    }
+    LeaveCriticalSection(&reader->cs);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI src_reader_ReadSample(IMFSourceReader *iface, DWORD index, DWORD flags, DWORD *actual_index,
@@ -1417,6 +1562,7 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
     object->IMFSourceReader_iface.lpVtbl = &srcreader_vtbl;
     object->source_events_callback.lpVtbl = &source_events_callback_vtbl;
     object->stream_events_callback.lpVtbl = &stream_events_callback_vtbl;
+    object->read_samples_callback.lpVtbl = &read_samples_callback_vtbl;
     object->refcount = 1;
     object->source = source;
     IMFMediaSource_AddRef(object->source);
@@ -1434,6 +1580,14 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
         goto failed;
     }
 
+    if (attributes)
+    {
+        IMFAttributes_GetUnknown(attributes, &MF_SOURCE_READER_ASYNC_CALLBACK, &IID_IMFSourceReaderCallback,
+                (void **)&object->async_callback);
+        if (object->async_callback)
+            TRACE("Using async callback %p.\n", object->async_callback);
+    }
+
     /* Set initial current media types. */
     for (i = 0; i < object->stream_count; ++i)
     {
@@ -1441,6 +1595,17 @@ static HRESULT create_source_reader_from_source(IMFMediaSource *source, IMFAttri
         IMFStreamDescriptor *sd;
         IMFMediaType *src_type;
         BOOL selected;
+
+
+        if (object->async_callback)
+        {
+            if (FAILED(hr = MFAllocateWorkQueue(&object->streams[i].read_samples_queue)))
+                break;
+            if (FAILED(hr = MFCreateAttributes(&object->streams[i].callback_state, 1)))
+                break;
+            if (FAILED(hr = IMFAttributes_SetUINT64(object->streams[i].callback_state, &WINE_CALLBACK_STATE_STREAM, (UINT64)&object->streams[i])))
+                break;
+        }
 
         if (FAILED(hr = MFCreateMediaType(&object->streams[i].current)))
             break;
