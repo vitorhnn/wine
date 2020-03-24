@@ -57,6 +57,7 @@ extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 
 GstCaps *make_mf_compatible_caps(GstCaps *caps);
 IMFMediaType *mf_media_type_from_caps(GstCaps *caps);
+GstCaps *caps_from_mf_media_type(IMFMediaType *type);
 IMFSample *mf_sample_from_gst_buffer(GstBuffer *in);
 
 enum source_type
