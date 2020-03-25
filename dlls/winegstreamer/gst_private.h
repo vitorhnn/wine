@@ -56,5 +56,6 @@ void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 
 IMFMediaType *mf_media_type_from_caps(GstCaps *caps);
+IMFSample *mf_sample_from_gst_buffer(GstBuffer *in);
 
 #endif /* __GST_PRIVATE_INCLUDED__ */
