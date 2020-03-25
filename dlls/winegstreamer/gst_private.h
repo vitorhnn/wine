@@ -54,4 +54,10 @@ void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
 
+enum source_type
+{
+    SOURCE_TYPE_MPEG_4,
+};
+HRESULT container_stream_handler_construct(REFIID riid, void **obj, enum source_type);
+
 #endif /* __GST_PRIVATE_INCLUDED__ */

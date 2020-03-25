@@ -398,6 +398,11 @@ failed:
     return hr;
 }
 
+static HRESULT mp4_stream_handler_create(REFIID riid, void **ret)
+{
+    return container_stream_handler_construct(riid, ret, SOURCE_TYPE_MPEG_4);
+}
+
 static const struct class_object
 {
     const GUID *clsid;
@@ -406,6 +411,7 @@ static const struct class_object
 class_objects[] =
 {
     { &CLSID_VideoProcessorMFT, &video_processor_create },
+    { &CLSID_MPEG4ByteStreamHandler, &mp4_stream_handler_create },
 };
 
 HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
@@ -413,6 +419,9 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
     struct class_factory *factory;
     unsigned int i;
     HRESULT hr;
+
+    if (!(init_gstreamer()))
+        return CLASS_E_CLASSNOTAVAILABLE;
 
     for (i = 0; i < ARRAY_SIZE(class_objects); ++i)
     {
