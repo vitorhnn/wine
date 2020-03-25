@@ -59,6 +59,7 @@ GstCaps *make_mf_compatible_caps(GstCaps *caps);
 IMFMediaType *mf_media_type_from_caps(GstCaps *caps);
 GstCaps *caps_from_mf_media_type(IMFMediaType *type);
 IMFSample *mf_sample_from_gst_buffer(GstBuffer *in);
+GstBuffer *gst_buffer_from_mf_sample(IMFSample *in);
 
 enum source_type
 {
