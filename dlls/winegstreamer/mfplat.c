@@ -652,6 +652,22 @@ static IMFMediaType* transform_to_media_type(GstCaps *caps)
 
             codec_data_to_user_data(info, media_type);
         }
+        else if (!(strcmp(mime_type, "video/mpeg")))
+        {
+            gint mpegversion;
+            if (gst_structure_get_int(info, "mpegversion", &mpegversion))
+            {
+                if (mpegversion == 4)
+                {
+                    IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_M4S2);
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, TRUE);
+
+                    codec_data_to_user_data(info, media_type);
+                }
+                else
+                    FIXME("Unrecognized mpeg version %d\n", mpegversion);
+            }
+        }
         else
             FIXME("Unrecognized video format %s\n", mime_type);
     }
