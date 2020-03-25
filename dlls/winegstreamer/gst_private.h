@@ -58,4 +58,10 @@ extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 IMFMediaType *mf_media_type_from_caps(GstCaps *caps);
 IMFSample *mf_sample_from_gst_buffer(GstBuffer *in);
 
+enum source_type
+{
+    SOURCE_TYPE_MPEG_4,
+};
+HRESULT container_stream_handler_construct(REFIID riid, void **obj, enum source_type);
+
 #endif /* __GST_PRIVATE_INCLUDED__ */
