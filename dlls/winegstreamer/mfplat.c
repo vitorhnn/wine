@@ -414,9 +414,19 @@ static HRESULT aac_decoder_create(REFIID riid, void **ret)
     return generic_decoder_construct(riid, ret, DECODER_TYPE_AAC);
 }
 
+static HRESULT wmv_decoder_create(REFIID riid, void **ret)
+{
+    return generic_decoder_construct(riid, ret, DECODER_TYPE_WMV);
+}
+
 static HRESULT mp4_stream_handler_create(REFIID riid, void **ret)
 {
     return container_stream_handler_construct(riid, ret, SOURCE_TYPE_MPEG_4);
+}
+
+static HRESULT asf_stream_handler_create(REFIID riid, void **ret)
+{
+    return container_stream_handler_construct(riid, ret, SOURCE_TYPE_ASF);
 }
 
 static const struct class_object
@@ -429,7 +439,9 @@ class_objects[] =
     { &CLSID_VideoProcessorMFT, &video_processor_create },
     { &CLSID_CMSH264DecoderMFT, &h264_decoder_create },
     { &CLSID_CMSAACDecMFT, &aac_decoder_create },
+    { &CLSID_CWMVDecMediaObject, &wmv_decoder_create },
     { &CLSID_MPEG4ByteStreamHandler, &mp4_stream_handler_create },
+    { &CLSID_ASFByteStreamHandler, &asf_stream_handler_create },
 };
 
 HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
@@ -516,6 +528,68 @@ const struct register_type_info aac_decoder_output_types[] =
     }
 };
 
+static WCHAR wmvdecoderW[] = {'W','M','V','i','d','e','o',' ','D','e','c','o','d','e','r',' ','M','F','T',0};
+
+const struct register_type_info wmv_decoder_input_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_WMV3,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_WVC1,
+    }
+};
+
+const struct register_type_info wmv_decoder_output_types[] =
+{
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_NV12,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YV12,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YUY2,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_UYVY,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_YVYU,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_NV11,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_RGB32,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_RGB24,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_RGB565,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_RGB555,
+    },
+    {
+        &MFMediaType_Video,
+        &MFVideoFormat_RGB8,
+    },
+};
+
 static const struct mft
 {
     const GUID *clsid;
@@ -550,6 +624,17 @@ mfts[] =
         aac_decoder_input_types,
         ARRAY_SIZE(aac_decoder_output_types),
         aac_decoder_output_types,
+        NULL
+    },
+    {
+        &CLSID_CWMVDecMediaObject,
+        &MFT_CATEGORY_VIDEO_DECODER,
+        wmvdecoderW,
+        MFT_ENUM_FLAG_SYNCMFT,
+        ARRAY_SIZE(wmv_decoder_input_types),
+        wmv_decoder_input_types,
+        ARRAY_SIZE(wmv_decoder_output_types),
+        wmv_decoder_output_types,
         NULL
     }
 };
