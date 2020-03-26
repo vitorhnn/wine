@@ -30,6 +30,9 @@ static struct source_desc
 {
     {/*SOURCE_TYPE_MPEG_4*/
         GST_STATIC_CAPS("video/quicktime"),
+    },
+    {/*SOURCE_TYPE_ASF*/
+        GST_STATIC_CAPS("video/x-ms-asf"),
     }
 };
 

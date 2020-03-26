@@ -66,11 +66,13 @@ enum decoder_type
 {
     DECODER_TYPE_H264,
     DECODER_TYPE_AAC,
+    DECODER_TYPE_WMV,
 };
 HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type);
 enum source_type
 {
     SOURCE_TYPE_MPEG_4,
+    SOURCE_TYPE_ASF,
 };
 HRESULT container_stream_handler_construct(REFIID riid, void **obj, enum source_type);
 
