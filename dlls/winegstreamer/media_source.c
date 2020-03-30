@@ -20,6 +20,14 @@ struct media_source
     IMFMediaSource IMFMediaSource_iface;
     LONG ref;
     IMFMediaEventQueue *event_queue;
+    enum
+    {
+        SOURCE_OPENING,
+        SOURCE_STOPPED, /* (READY) */
+        SOURCE_PAUSED,
+        SOURCE_RUNNING,
+        SOURCE_SHUTDOWN,
+    } state;
 };
 
 static inline struct media_source *impl_from_IMFMediaSource(IMFMediaSource *iface)
@@ -81,6 +89,9 @@ static HRESULT WINAPI media_source_GetEvent(IMFMediaSource *iface, DWORD flags, 
 
     TRACE("(%p)->(%#x, %p)\n", source, flags, event);
 
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
+
     return IMFMediaEventQueue_GetEvent(source->event_queue, flags, event);
 }
 
@@ -90,6 +101,9 @@ static HRESULT WINAPI media_source_BeginGetEvent(IMFMediaSource *iface, IMFAsync
 
     TRACE("(%p)->(%p, %p)\n", source, callback, state);
 
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
+
     return IMFMediaEventQueue_BeginGetEvent(source->event_queue, callback, state);
 }
 
@@ -98,6 +112,9 @@ static HRESULT WINAPI media_source_EndGetEvent(IMFMediaSource *iface, IMFAsyncRe
     struct media_source *source = impl_from_IMFMediaSource(iface);
 
     TRACE("(%p)->(%p, %p)\n", source, result, event);
+
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
 
     return IMFMediaEventQueue_EndGetEvent(source->event_queue, result, event);
 }
@@ -109,6 +126,9 @@ static HRESULT WINAPI media_source_QueueEvent(IMFMediaSource *iface, MediaEventT
 
     TRACE("(%p)->(%d, %s, %#x, %p)\n", source, event_type, debugstr_guid(ext_type), hr, value);
 
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
+
     return IMFMediaEventQueue_QueueEventParamVar(source->event_queue, event_type, ext_type, hr, value);
 }
 
@@ -118,6 +138,9 @@ static HRESULT WINAPI media_source_GetCharacteristics(IMFMediaSource *iface, DWO
 
     FIXME("(%p)->(%p): stub\n", source, characteristics);
 
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
+
     return E_NOTIMPL;
 }
 
@@ -126,6 +149,9 @@ static HRESULT WINAPI media_source_CreatePresentationDescriptor(IMFMediaSource *
     struct media_source *source = impl_from_IMFMediaSource(iface);
 
     FIXME("(%p)->(%p): stub\n", source, descriptor);
+
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
 
     return E_NOTIMPL;
 }
@@ -137,6 +163,9 @@ static HRESULT WINAPI media_source_Start(IMFMediaSource *iface, IMFPresentationD
 
     FIXME("(%p)->(%p, %p, %p): stub\n", source, descriptor, time_format, start_position);
 
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
+
     return E_NOTIMPL;
 }
 
@@ -145,6 +174,9 @@ static HRESULT WINAPI media_source_Stop(IMFMediaSource *iface)
     struct media_source *source = impl_from_IMFMediaSource(iface);
 
     FIXME("(%p): stub\n", source);
+
+    if (source->state == SOURCE_SHUTDOWN)
+        return MF_E_SHUTDOWN;
 
     return E_NOTIMPL;
 }
@@ -170,9 +202,10 @@ static HRESULT WINAPI media_source_Shutdown(IMFMediaSource *iface)
 {
     struct media_source *source = impl_from_IMFMediaSource(iface);
 
-    FIXME("(%p): stub\n", source);
+    TRACE("(%p)\n", source);
 
-    return E_NOTIMPL;
+    source->state = SOURCE_SHUTDOWN;
+    return media_source_teardown(source);
 }
 
 static const IMFMediaSourceVtbl IMFMediaSource_vtbl =
@@ -202,6 +235,8 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
 
     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
         goto fail;
+
+    object->state = SOURCE_STOPPED;
 
     object->IMFMediaSource_iface.lpVtbl = &IMFMediaSource_vtbl;
     object->ref = 1;
