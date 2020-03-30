@@ -49,6 +49,8 @@ static void CALLBACK perform_cb(TP_CALLBACK_INSTANCE *instance, void *user)
 
     if (cbdata->type < GSTDEMUX_MAX)
         perform_cb_gstdemux(cbdata);
+    else if (cbdata->type < MEDIA_SOURCE_MAX)
+        perform_cb_media_source(cbdata);
 
     pthread_mutex_lock(&cbdata->lock);
     cbdata->finished = 1;
@@ -300,4 +302,60 @@ gboolean query_sink_wrapper(GstPad *pad, GstObject *parent, GstQuery *query)
     call_cb(&cbdata);
 
     return cbdata.u.query_sink_data.ret;
+}
+
+GstFlowReturn pull_from_bytestream_wrapper(GstPad *pad, GstObject *parent, guint64 ofs, guint len,
+        GstBuffer **buf)
+{
+    struct cb_data cbdata = { PULL_FROM_BYTESTREAM };
+
+    cbdata.u.getrange_data.pad = pad;
+    cbdata.u.getrange_data.parent = parent;
+    cbdata.u.getrange_data.ofs = ofs;
+    cbdata.u.getrange_data.len = len;
+    cbdata.u.getrange_data.buf = buf;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.getrange_data.ret;
+}
+
+gboolean query_bytestream_wrapper(GstPad *pad, GstObject *parent, GstQuery *query)
+{
+    struct cb_data cbdata = { QUERY_BYTESTREAM };
+
+    cbdata.u.query_function_data.pad = pad;
+    cbdata.u.query_function_data.parent = parent;
+    cbdata.u.query_function_data.query = query;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.query_function_data.ret;
+}
+
+gboolean activate_bytestream_pad_mode_wrapper(GstPad *pad, GstObject *parent, GstPadMode mode, gboolean activate)
+{
+    struct cb_data cbdata = { ACTIVATE_BYTESTREAM_PAD_MODE };
+
+    cbdata.u.activate_mode_data.pad = pad;
+    cbdata.u.activate_mode_data.parent = parent;
+    cbdata.u.activate_mode_data.mode = mode;
+    cbdata.u.activate_mode_data.activate = activate;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.activate_mode_data.ret;
+}
+
+gboolean process_bytestream_pad_event_wrapper(GstPad *pad, GstObject *parent, GstEvent *event)
+{
+    struct cb_data cbdata = { PROCESS_BYTESTREAM_PAD_EVENT };
+
+    cbdata.u.event_src_data.pad = pad;
+    cbdata.u.event_src_data.parent = parent;
+    cbdata.u.event_src_data.event = event;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.event_src_data.ret;
 }
