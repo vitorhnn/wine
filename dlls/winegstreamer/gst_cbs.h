@@ -43,7 +43,12 @@ enum CB_TYPE {
     AUTOPLUG_BLACKLIST,
     UNKNOWN_TYPE,
     QUERY_SINK,
-    GSTDEMUX_MAX
+    GSTDEMUX_MAX,
+    PULL_FROM_BYTESTREAM,
+    QUERY_BYTESTREAM,
+    ACTIVATE_BYTESTREAM_PAD_MODE,
+    PROCESS_BYTESTREAM_PAD_EVENT,
+    MEDIA_SOURCE_MAX,
 };
 
 struct cb_data {
@@ -138,6 +143,7 @@ struct cb_data {
 
 void mark_wine_thread(void) DECLSPEC_HIDDEN;
 void perform_cb_gstdemux(struct cb_data *data) DECLSPEC_HIDDEN;
+void perform_cb_media_source(struct cb_data *data) DECLSPEC_HIDDEN;
 
 GstBusSyncReply watch_bus_wrapper(GstBus *bus, GstMessage *msg, gpointer user) DECLSPEC_HIDDEN;
 void existing_new_pad_wrapper(GstElement *bin, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
@@ -154,5 +160,9 @@ GstAutoplugSelectResult autoplug_blacklist_wrapper(GstElement *bin, GstPad *pad,
 void unknown_type_wrapper(GstElement *bin, GstPad *pad, GstCaps *caps, gpointer user) DECLSPEC_HIDDEN;
 void Gstreamer_transform_pad_added_wrapper(GstElement *filter, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
 gboolean query_sink_wrapper(GstPad *pad, GstObject *parent, GstQuery *query) DECLSPEC_HIDDEN;
+GstFlowReturn pull_from_bytestream_wrapper(GstPad *pad, GstObject *parent, guint64 ofs, guint len, GstBuffer **buf) DECLSPEC_HIDDEN;
+gboolean query_bytestream_wrapper(GstPad *pad, GstObject *parent, GstQuery *query) DECLSPEC_HIDDEN;
+gboolean activate_bytestream_pad_mode_wrapper(GstPad *pad, GstObject *parent, GstPadMode mode, gboolean activate) DECLSPEC_HIDDEN;
+gboolean process_bytestream_pad_event_wrapper(GstPad *pad, GstObject *parent, GstEvent *event) DECLSPEC_HIDDEN;
 
 #endif
