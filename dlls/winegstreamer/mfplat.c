@@ -16,6 +16,11 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include "config.h"
+#include <gst/gst.h>
+
+#include "gst_private.h"
+
 #include <stdarg.h>
 
 #include "gst_private.h"
@@ -441,4 +446,195 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
     }
 
     return CLASS_E_CLASSNOTAVAILABLE;
+}
+
+const static struct
+{
+    const GUID *subtype;
+    GstVideoFormat format;
+}
+uncompressed_formats[] =
+{
+    {&MFVideoFormat_ARGB32,  GST_VIDEO_FORMAT_BGRA},
+    {&MFVideoFormat_RGB32,   GST_VIDEO_FORMAT_BGRx},
+    {&MFVideoFormat_RGB24,   GST_VIDEO_FORMAT_BGR},
+    {&MFVideoFormat_RGB565,  GST_VIDEO_FORMAT_BGR16},
+    {&MFVideoFormat_RGB555,  GST_VIDEO_FORMAT_BGR15},
+};
+
+/* caps will be modified to represent the exact type needed for the format */
+static IMFMediaType* transform_to_media_type(GstCaps *caps)
+{
+    IMFMediaType *media_type;
+    GstStructure *info;
+    const char *mime_type;
+
+    if (TRACE_ON(mfplat))
+    {
+        gchar *human_readable = gst_caps_to_string(caps);
+        TRACE("caps = %s\n", debugstr_a(human_readable));
+        g_free(human_readable);
+    }
+
+    if (FAILED(MFCreateMediaType(&media_type)))
+    {
+        return NULL;
+    }
+
+    info = gst_caps_get_structure(caps, 0);
+    mime_type = gst_structure_get_name(info);
+
+    if (!(strncmp(mime_type, "video", 5)))
+    {
+        GstVideoInfo video_info;
+
+        if (!(gst_video_info_from_caps(&video_info, caps)))
+        {
+            return NULL;
+        }
+
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+
+        IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_SIZE, ((UINT64)video_info.width << 32) | video_info.height);
+
+        IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_RATE, ((UINT64)video_info.fps_n << 32) | video_info.fps_d);
+
+        if (!(strcmp(mime_type, "video/x-raw")))
+        {
+            GUID fourcc_subtype = MFVideoFormat_Base;
+            unsigned int i;
+
+            IMFMediaType_SetUINT32(media_type, &MF_MT_COMPRESSED, FALSE);
+
+            /* First try FOURCC */
+            if ((fourcc_subtype.Data1 = gst_video_format_to_fourcc(video_info.finfo->format)))
+            {
+                IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &fourcc_subtype);
+            }
+            else
+            {
+                for (i = 0; i < ARRAY_SIZE(uncompressed_formats); i++)
+                {
+                    if (uncompressed_formats[i].format == video_info.finfo->format)
+                    {
+                        IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, uncompressed_formats[i].subtype);
+                        break;
+                    }
+                }
+                if (i == ARRAY_SIZE(uncompressed_formats))
+                    FIXME("Unrecognized format.\n");
+            }
+        }
+        else
+            FIXME("Unrecognized video format %s\n", mime_type);
+    }
+    else if (!(strncmp(mime_type, "audio", 5)))
+    {
+        gint rate, channels, bitrate;
+        IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio);
+
+        if (gst_structure_get_int(info, "rate", &rate))
+            IMFMediaType_SetUINT32(media_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, rate);
+
+        if (gst_structure_get_int(info, "channels", &channels))
+            IMFMediaType_SetUINT32(media_type, &MF_MT_AUDIO_NUM_CHANNELS, channels);
+
+        if (gst_structure_get_int(info, "bitrate", &bitrate))
+            IMFMediaType_SetUINT32(media_type, &MF_MT_AVG_BITRATE, bitrate);
+
+        if (!(strcmp(mime_type, "audio/x-raw")))
+        {
+            const char *format;
+            if ((format = gst_structure_get_string(info, "format")))
+            {
+                char type;
+                unsigned int bits_per_sample;
+                char endian[2];
+                char new_format[6];
+                if ((strlen(format) > 5) || (sscanf(format, "%c%u%2c", &type, &bits_per_sample, endian) < 2))
+                {
+                    FIXME("Unhandled audio format %s\n", format);
+                    IMFMediaType_Release(media_type);
+                    return NULL;
+                }
+
+                if (type == 'F')
+                {
+                    IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFAudioFormat_Float);
+                }
+                else if (type == 'U' || type == 'S')
+                {
+                    IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFAudioFormat_PCM);
+                    if (bits_per_sample == 8)
+                        type = 'U';
+                    else
+                        type = 'S';
+                }
+                else
+                {
+                    FIXME("Unrecognized audio format: %s\n", format);
+                    IMFMediaType_Release(media_type);
+                    return NULL;
+                }
+
+                IMFMediaType_SetUINT32(media_type, &MF_MT_AUDIO_BITS_PER_SAMPLE, bits_per_sample);
+
+                if (endian[0] == 'B')
+                    endian[0] = 'L';
+
+                sprintf(new_format, "%c%u%.2s", type, bits_per_sample, bits_per_sample > 8 ? endian : 0);
+                gst_caps_set_simple(caps, "format", G_TYPE_STRING, new_format, NULL);
+            }
+            else
+            {
+                ERR("Failed to get audio format\n");
+            }
+        }
+        else
+            FIXME("Unrecognized audio format %s\n", mime_type);
+    }
+    else
+    {
+        IMFMediaType_Release(media_type);
+        return NULL;
+    }
+
+    return media_type;
+}
+
+/* returns NULL if doesn't match exactly */
+IMFMediaType *mf_media_type_from_caps(GstCaps *caps)
+{
+    GstCaps *writeable_caps;
+    IMFMediaType *ret;
+
+    writeable_caps = gst_caps_copy(caps);
+    ret = transform_to_media_type(writeable_caps);
+
+    if (!(gst_caps_is_equal(caps, writeable_caps)))
+    {
+        IMFMediaType_Release(ret);
+        ret = NULL;
+    }
+    gst_caps_unref(writeable_caps);
+    return ret;
+}
+
+GstCaps *make_mf_compatible_caps(GstCaps *caps)
+{
+    GstCaps *ret;
+    IMFMediaType *media_type;
+
+    ret = gst_caps_copy(caps);
+
+    if ((media_type = transform_to_media_type(ret)))
+        IMFMediaType_Release(media_type);
+
+    if (!media_type)
+    {
+        gst_caps_unref(ret);
+        return NULL;
+    }
+
+    return ret;
 }
