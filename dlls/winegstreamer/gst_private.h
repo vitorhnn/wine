@@ -36,6 +36,7 @@
 #include "winuser.h"
 #include "dshow.h"
 #include "strmif.h"
+#include "mfobjects.h"
 #include "wine/heap.h"
 #include "wine/strmbase.h"
 
@@ -53,6 +54,9 @@ BOOL init_gstreamer(void) DECLSPEC_HIDDEN;
 void start_dispatch_thread(void) DECLSPEC_HIDDEN;
 
 extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj) DECLSPEC_HIDDEN;
+
+GstCaps *make_mf_compatible_caps(GstCaps *caps);
+IMFMediaType *mf_media_type_from_caps(GstCaps *caps);
 
 enum source_type
 {

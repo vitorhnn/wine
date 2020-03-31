@@ -507,7 +507,10 @@ static HRESULT WINAPI media_stream_GetStreamDescriptor(IMFMediaStream* iface, IM
     if (stream->state == STREAM_SHUTDOWN)
         return MF_E_SHUTDOWN;
 
-    return E_NOTIMPL;
+    IMFStreamDescriptor_AddRef(stream->descriptor);
+    *descriptor = stream->descriptor;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI media_stream_RequestSample(IMFMediaStream *iface, IUnknown *token)
@@ -539,6 +542,9 @@ static const IMFMediaStreamVtbl media_stream_vtbl =
 static HRESULT media_stream_constructor(struct media_source *source, GstPad *pad, DWORD stream_id, struct media_stream **out_stream)
 {
     struct media_stream *object = heap_alloc_zero(sizeof(*object));
+    IMFMediaTypeHandler *type_handler = NULL;
+    IMFMediaType *stream_type = NULL;
+    GstCaps *caps = NULL;
     HRESULT hr;
 
     TRACE("(%p %p)->(%p)\n", source, pad, out_stream);
@@ -567,6 +573,36 @@ static HRESULT media_stream_constructor(struct media_source *source, GstPad *pad
     g_object_set(object->appsink, "async", FALSE, NULL); /* <- This allows us interact with the bin w/o prerolling */
     g_signal_connect(object->appsink, "new-sample", G_CALLBACK(stream_new_sample_wrapper), object);
 
+    if (!(caps = gst_pad_query_caps(pad, NULL)))
+        goto fail;
+
+    if (TRACE_ON(mfplat))
+    {
+        gchar *caps_str = gst_caps_to_string(caps);
+        TRACE("caps %s\n", debugstr_a(caps_str));
+        g_free(caps_str);
+    }
+
+    if (!(stream_type = mf_media_type_from_caps(caps)))
+        goto fail;
+
+    gst_caps_unref(caps);
+    caps = NULL;
+
+    if (FAILED(hr = MFCreateStreamDescriptor(stream_id, 1, &stream_type, &object->descriptor)))
+        goto fail;
+
+    if (FAILED(hr = IMFStreamDescriptor_GetMediaTypeHandler(object->descriptor, &type_handler)))
+        goto fail;
+
+    if (FAILED(hr = IMFMediaTypeHandler_SetCurrentMediaType(type_handler, stream_type)))
+        goto fail;
+
+    IMFMediaTypeHandler_Release(type_handler);
+    type_handler = NULL;
+    IMFMediaType_Release(stream_type);
+    stream_type = NULL;
+
     object->my_sink = gst_element_get_static_pad(object->appsink, "sink");
     gst_pad_set_element_private(pad, object);
 
@@ -581,6 +617,13 @@ static HRESULT media_stream_constructor(struct media_source *source, GstPad *pad
 
     fail:
     WARN("Failed to construct media stream, hr %#x.\n", hr);
+
+    if (caps)
+        gst_caps_unref(caps);
+    if (stream_type)
+        IMFMediaType_Release(stream_type);
+    if (type_handler)
+        IMFMediaTypeHandler_Release(type_handler);
 
     IMFMediaStream_Release(&object->IMFMediaStream_iface);
     return hr;
