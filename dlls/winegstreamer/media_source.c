@@ -38,7 +38,12 @@ struct media_source
     enum source_type type;
     IMFMediaEventQueue *event_queue;
     IMFByteStream *byte_stream;
-    GstPad *my_src;
+    struct media_stream **streams;
+    ULONG stream_count;
+    GstBus *bus;
+    GstElement *container;
+    GstElement *demuxer;
+    GstPad *my_src, *their_sink;
     enum
     {
         SOURCE_OPENING,
@@ -200,6 +205,37 @@ static gboolean process_bytestream_pad_event(GstPad *pad, GstObject *parent, Gst
             return gst_pad_event_default(pad, parent, event);
     }
     return TRUE;
+}
+
+GstBusSyncReply watch_source_bus(GstBus *bus, GstMessage *message, gpointer user)
+{
+    struct media_source *source = (struct media_source *) user;
+    gchar *dbg_info = NULL;
+    GError *err = NULL;
+
+    TRACE("source %p message type %s\n", source, GST_MESSAGE_TYPE_NAME(message));
+
+    switch (message->type)
+    {
+        case GST_MESSAGE_ERROR:
+            gst_message_parse_error(message, &err, &dbg_info);
+            ERR("%s: %s\n", GST_OBJECT_NAME(message->src), err->message);
+            ERR("%s\n", dbg_info);
+            g_error_free(err);
+            g_free(dbg_info);
+            break;
+        case GST_MESSAGE_WARNING:
+            gst_message_parse_warning(message, &err, &dbg_info);
+            WARN("%s: %s\n", GST_OBJECT_NAME(message->src), err->message);
+            WARN("%s\n", dbg_info);
+            g_error_free(err);
+            g_free(dbg_info);
+            break;
+        default:
+            break;
+    }
+
+    return GST_BUS_PASS;
 }
 
 static HRESULT WINAPI media_source_QueryInterface(IMFMediaSource *iface, REFIID riid, void **out)
@@ -364,6 +400,13 @@ static HRESULT media_source_teardown(struct media_source *source)
 {
     if (source->my_src)
         gst_object_unref(GST_OBJECT(source->my_src));
+    if (source->their_sink)
+        gst_object_unref(GST_OBJECT(source->their_sink));
+    if (source->container)
+    {
+        gst_element_set_state(source->container, GST_STATE_NULL);
+        gst_object_unref(GST_OBJECT(source->container));
+    }
     if (source->event_queue)
         IMFMediaEventQueue_Release(source->event_queue);
     if (source->byte_stream)
@@ -408,7 +451,10 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
         source_descs[type].bytestream_caps);
 
     struct media_source *object = heap_alloc_zero(sizeof(*object));
+    GList *demuxer_list_one, *demuxer_list_two;
+    GstElementFactory *demuxer_factory = NULL;
     HRESULT hr;
+    int ret;
 
     if (!object)
         return E_OUTOFMEMORY;
@@ -422,12 +468,55 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
     if (FAILED(hr = MFCreateEventQueue(&object->event_queue)))
         goto fail;
 
+    object->container = gst_bin_new(NULL);
+    object->bus = gst_bus_new();
+    gst_bus_set_sync_handler(object->bus, watch_source_bus_wrapper, object, NULL);
+    gst_element_set_bus(object->container, object->bus);
+
     object->my_src = gst_pad_new_from_static_template(&src_template, "mf-src");
     gst_pad_set_element_private(object->my_src, object);
     gst_pad_set_getrange_function(object->my_src, pull_from_bytestream_wrapper);
     gst_pad_set_query_function(object->my_src, query_bytestream_wrapper);
     gst_pad_set_activatemode_function(object->my_src, activate_bytestream_pad_mode_wrapper);
     gst_pad_set_event_function(object->my_src, process_bytestream_pad_event_wrapper);
+
+    /* Find demuxer */
+    demuxer_list_one = gst_element_factory_list_get_elements(GST_ELEMENT_FACTORY_TYPE_DEMUXER, 1);
+
+    demuxer_list_two = gst_element_factory_list_filter(demuxer_list_one, gst_static_caps_get(&source_descs[type].bytestream_caps), GST_PAD_SINK, 0);
+    gst_plugin_feature_list_free(demuxer_list_one);
+
+    if (!(g_list_length(demuxer_list_two)))
+    {
+        ERR("Failed to find demuxer for source.\n");
+        gst_plugin_feature_list_free(demuxer_list_two);
+        hr = E_FAIL;
+        goto fail;
+    }
+
+    demuxer_factory = g_list_first(demuxer_list_two)->data;
+    gst_object_ref(demuxer_factory);
+    gst_plugin_feature_list_free(demuxer_list_two);
+
+    TRACE("Found demuxer %s.\n", GST_ELEMENT_NAME(demuxer_factory));
+
+    object->demuxer = gst_element_factory_create(demuxer_factory, NULL);
+    if (!(object->demuxer))
+    {
+        WARN("Failed to create demuxer for source\n");
+        hr = E_OUTOFMEMORY;
+        goto fail;
+    }
+    gst_bin_add(GST_BIN(object->container), object->demuxer);
+
+    object->their_sink = gst_element_get_static_pad(object->demuxer, "sink");
+
+    if ((ret = gst_pad_link(object->my_src, object->their_sink)) < 0)
+    {
+        WARN("Failed to link our bytestream pad to the demuxer input\n");
+        hr = E_OUTOFMEMORY;
+        goto fail;
+    }
 
     object->state = SOURCE_STOPPED;
 
@@ -437,6 +526,8 @@ static HRESULT media_source_constructor(IMFByteStream *bytestream, enum source_t
     fail:
     WARN("Failed to construct MFMediaSource, hr %#x.\n", hr);
 
+    if (demuxer_factory)
+        gst_object_unref(demuxer_factory);
     media_source_teardown(object);
     heap_free(object);
     *out_media_source = NULL;
@@ -933,6 +1024,12 @@ void perform_cb_media_source(struct cb_data *cbdata)
         {
             struct event_src_data *data = &cbdata->u.event_src_data;
             cbdata->u.event_src_data.ret = process_bytestream_pad_event(data->pad, data->parent, data->event);
+            break;
+        }
+    case WATCH_SOURCE_BUS:
+        {
+            struct watch_bus_data *data = &cbdata->u.watch_bus_data;
+            cbdata->u.watch_bus_data.ret = watch_source_bus(data->bus, data->msg, data->user);
             break;
         }
     default:
