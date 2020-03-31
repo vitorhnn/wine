@@ -359,3 +359,16 @@ gboolean process_bytestream_pad_event_wrapper(GstPad *pad, GstObject *parent, Gs
 
     return cbdata.u.event_src_data.ret;
 }
+
+GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user)
+{
+    struct cb_data cbdata = { WATCH_SOURCE_BUS };
+
+    cbdata.u.watch_bus_data.bus = bus;
+    cbdata.u.watch_bus_data.msg = message;
+    cbdata.u.watch_bus_data.user = user;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.watch_bus_data.ret;
+}
