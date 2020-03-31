@@ -48,6 +48,7 @@ enum CB_TYPE {
     QUERY_BYTESTREAM,
     ACTIVATE_BYTESTREAM_PAD_MODE,
     PROCESS_BYTESTREAM_PAD_EVENT,
+    WATCH_SOURCE_BUS,
     MEDIA_SOURCE_MAX,
 };
 
@@ -164,5 +165,6 @@ GstFlowReturn pull_from_bytestream_wrapper(GstPad *pad, GstObject *parent, guint
 gboolean query_bytestream_wrapper(GstPad *pad, GstObject *parent, GstQuery *query) DECLSPEC_HIDDEN;
 gboolean activate_bytestream_pad_mode_wrapper(GstPad *pad, GstObject *parent, GstPadMode mode, gboolean activate) DECLSPEC_HIDDEN;
 gboolean process_bytestream_pad_event_wrapper(GstPad *pad, GstObject *parent, GstEvent *event) DECLSPEC_HIDDEN;
+GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user) DECLSPEC_HIDDEN;
 
 #endif
