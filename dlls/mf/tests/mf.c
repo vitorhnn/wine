@@ -1514,7 +1514,7 @@ todo_wine
     ok(hr == S_OK, "Failed to activate, hr %#x.\n", hr);
 
     hr = IMFMediaSink_GetStreamSinkByIndex(sink, 0, &stream_sink);
-    ok(hr == S_OK, "Unexpected hr %#x.\n", hr);
+    ok(hr == S_OK, "Failed to get stream sink, hr %#x.\n", hr);
 
     hr = IMFTopologyNode_SetObject(sink_node, (IUnknown *)stream_sink);
     ok(hr == S_OK, "Failed to set object, hr %#x.\n", hr);
