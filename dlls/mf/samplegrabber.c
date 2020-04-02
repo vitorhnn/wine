@@ -633,7 +633,7 @@ static HRESULT WINAPI sample_grabber_stream_type_handler_GetMediaTypeCount(IMFMe
     if (!count)
         return E_POINTER;
 
-    *count = 0;
+    *count = 1;
 
     return S_OK;
 }
@@ -641,12 +641,20 @@ static HRESULT WINAPI sample_grabber_stream_type_handler_GetMediaTypeCount(IMFMe
 static HRESULT WINAPI sample_grabber_stream_type_handler_GetMediaTypeByIndex(IMFMediaTypeHandler *iface, DWORD index,
         IMFMediaType **media_type)
 {
+    struct sample_grabber_stream *stream = impl_from_IMFMediaTypeHandler(iface);
+
     TRACE("%p, %u, %p.\n", iface, index, media_type);
 
     if (!media_type)
         return E_POINTER;
 
-    return MF_E_NO_MORE_TYPES;
+    if (index != 0)
+        return MF_E_NO_MORE_TYPES;
+
+    *media_type = stream->sink->media_type;
+    IMFMediaType_AddRef(stream->sink->media_type);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI sample_grabber_stream_type_handler_SetCurrentMediaType(IMFMediaTypeHandler *iface,
@@ -659,6 +667,9 @@ static HRESULT WINAPI sample_grabber_stream_type_handler_SetCurrentMediaType(IMF
 
     if (FAILED(hr = sample_grabber_stream_is_media_type_supported(stream, media_type)))
         return hr;
+
+    if (FAILED(sample_grabber_stream_type_handler_IsMediaTypeSupported(iface, media_type, NULL)))
+        return MF_E_INVALIDMEDIATYPE;
 
     IMFMediaType_Release(stream->sink->media_type);
     stream->sink->media_type = media_type;
