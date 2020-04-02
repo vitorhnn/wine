@@ -2005,6 +2005,7 @@ static HRESULT topology_loader_resolve_branch(IMFTopologyNode *src, IMFMediaType
                         IMFTopologyNode_SetObject(node_dec, (IUnknown *)decoder);
                         IMFTopologyNode_ConnectOutput(src, 0, node_dec, 0);
                         IMFTopologyNode_ConnectOutput(node_dec, 0, sink, 0);
+                        IMFTransform_SetOutputType(decoder, 0, decoder_mtype, 0);
 
                         IMFActivate_ShutdownObject(activates_decs[i]);
                         return S_OK;
