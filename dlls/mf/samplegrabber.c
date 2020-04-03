@@ -789,12 +789,13 @@ static HRESULT WINAPI sample_grabber_stream_timer_callback_Invoke(IMFAsyncCallba
                     if (FAILED(hr = sample_grabber_report_sample(stream->sink, item->u.sample, &sample_delivered)))
                         WARN("Failed to report a sample, hr %#x.\n", hr);
                     stream_release_pending_item(item);
+                    if (sample_delivered)
+                        sample_grabber_stream_request_sample(stream);
                     item = stream_get_next_item(stream);
                     if (item && item->type == ITEM_TYPE_SAMPLE)
                     {
                         if (FAILED(hr = stream_schedule_sample(stream, item)))
                             WARN("Failed to schedule a sample, hr %#x.\n", hr);
-                        sample_grabber_stream_request_sample(stream);
                         item = NULL;
                     }
                     break;
