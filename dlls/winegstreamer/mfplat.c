@@ -525,6 +525,10 @@ const struct register_type_info aac_decoder_output_types[] =
     {
         &MFMediaType_Audio,
         &MFAudioFormat_Float
+    },
+    {
+        &MFMediaType_Audio,
+        &MFAudioFormat_PCM
     }
 };
 
