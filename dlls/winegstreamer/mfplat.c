@@ -916,6 +916,7 @@ static IMFMediaType* transform_to_media_type(GstCaps *caps)
                     struct aac_user_data *user_data = NULL;
 
                     IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFAudioFormat_AAC);
+                    IMFMediaType_SetUINT32(media_type, &MF_MT_AUDIO_BITS_PER_SAMPLE, 16);
 
                     codec_data = gst_structure_get_value(info, "codec_data");
                     if (codec_data)
