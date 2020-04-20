@@ -49,6 +49,10 @@ enum CB_TYPE {
     ACTIVATE_BYTESTREAM_PAD_MODE,
     PROCESS_BYTESTREAM_PAD_EVENT,
     WATCH_SOURCE_BUS,
+    SOURCE_STREAM_ADDED,
+    SOURCE_STREAM_REMOVED,
+    SOURCE_ALL_STREAMS,
+    STREAM_NEW_SAMPLE,
     MEDIA_SOURCE_MAX,
 };
 
@@ -134,6 +138,11 @@ struct cb_data {
             GstQuery *query;
             gboolean ret;
         } query_sink_data;
+        struct new_sample_data {
+            GstElement *appsink;
+            gpointer user;
+            GstFlowReturn ret;
+        } new_sample_data;
     } u;
 
     int finished;
@@ -166,5 +175,9 @@ gboolean query_bytestream_wrapper(GstPad *pad, GstObject *parent, GstQuery *quer
 gboolean activate_bytestream_pad_mode_wrapper(GstPad *pad, GstObject *parent, GstPadMode mode, gboolean activate) DECLSPEC_HIDDEN;
 gboolean process_bytestream_pad_event_wrapper(GstPad *pad, GstObject *parent, GstEvent *event) DECLSPEC_HIDDEN;
 GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpointer user) DECLSPEC_HIDDEN;
+void source_stream_added_wrapper(GstElement *bin, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
+void source_stream_removed_wrapper(GstElement *element, GstPad *pad, gpointer user) DECLSPEC_HIDDEN;
+void source_all_streams_wrapper(GstElement *element, gpointer user) DECLSPEC_HIDDEN;
+GstFlowReturn stream_new_sample_wrapper(GstElement *appsink, gpointer user) DECLSPEC_HIDDEN;
 
 #endif

@@ -372,3 +372,47 @@ GstBusSyncReply watch_source_bus_wrapper(GstBus *bus, GstMessage *message, gpoin
 
     return cbdata.u.watch_bus_data.ret;
 }
+
+void source_stream_added_wrapper(GstElement *bin, GstPad *pad, gpointer user)
+{
+    struct cb_data cbdata = { SOURCE_STREAM_ADDED };
+
+    cbdata.u.pad_added_data.element = bin;
+    cbdata.u.pad_added_data.pad = pad;
+    cbdata.u.pad_added_data.user = user;
+
+    call_cb(&cbdata);
+}
+
+void source_stream_removed_wrapper(GstElement *element, GstPad *pad, gpointer user)
+{
+    struct cb_data cbdata = { SOURCE_STREAM_REMOVED };
+
+    cbdata.u.pad_removed_data.element = element;
+    cbdata.u.pad_removed_data.pad = pad;
+    cbdata.u.pad_removed_data.user = user;
+
+    call_cb(&cbdata);
+}
+
+void source_all_streams_wrapper(GstElement *element, gpointer user)
+{
+    struct cb_data cbdata = { SOURCE_ALL_STREAMS };
+
+    cbdata.u.no_more_pads_data.element = element;
+    cbdata.u.no_more_pads_data.user = user;
+
+    call_cb(&cbdata);
+}
+
+GstFlowReturn stream_new_sample_wrapper(GstElement *appsink, gpointer user)
+{
+    struct cb_data cbdata = { STREAM_NEW_SAMPLE };
+
+    cbdata.u.new_sample_data.appsink = appsink;
+    cbdata.u.new_sample_data.user = user;
+
+    call_cb(&cbdata);
+
+    return cbdata.u.new_sample_data.ret;
+}
