@@ -487,7 +487,11 @@ static HRESULT stream_place_marker(struct sample_grabber_stream *stream, MFSTREA
         const PROPVARIANT *context_value)
 {
     struct scheduled_item *item;
+    PROPVARIANT empty_prop = {.vt = VT_EMPTY};
     HRESULT hr;
+
+    if (!context_value)
+        context_value = &empty_prop;
 
     if (list_empty(&stream->items))
     {
