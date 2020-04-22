@@ -78,6 +78,7 @@ struct mf_decoder
     BOOL flushing, draining;
     CRITICAL_SECTION state_cs;
     CONDITION_VARIABLE state_cv;
+    DWORD message_queue;
 };
 
 static struct mf_decoder *impl_mf_decoder_from_IMFTransform(IMFTransform *iface)
@@ -971,7 +972,7 @@ static HRESULT WINAPI mf_decoder_ProcessMessage(IMFTransform *iface, MFT_MESSAGE
             IMFAttributes_SetUINT32(async_param, &WINE_MFT_MESSAGE_TYPE, message);
 
             EnterCriticalSection(&This->state_cs);
-            MFPutWorkItem(MF_MULTITHREADED_WORKQUEUE, &This->process_message_callback, (IUnknown *)async_param);
+            MFPutWorkItem(This->message_queue, &This->process_message_callback, (IUnknown *)async_param);
             while (!This->draining)
                 SleepConditionVariableCS(&This->state_cv, &This->state_cs, INFINITE);
             LeaveCriticalSection(&This->state_cs);
@@ -1198,6 +1199,8 @@ static void mf_decoder_destroy(struct mf_decoder *This)
 
     DeleteCriticalSection(&This->state_cs);
 
+    MFUnlockWorkQueue(This->message_queue);
+
     heap_free(This);
 }
 
@@ -1213,6 +1216,7 @@ HRESULT generic_decoder_construct(REFIID riid, void **obj, enum decoder_type typ
         return E_OUTOFMEMORY;
     This->type = type;
     This->video = decoder_descs[type].major_type == &MFMediaType_Video;
+    MFAllocateWorkQueue(&This->message_queue);
 
     InitializeCriticalSection(&This->state_cs);
     InitializeConditionVariable(&This->state_cv);
