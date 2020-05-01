@@ -429,6 +429,8 @@ static HRESULT asf_stream_handler_create(REFIID riid, void **ret)
     return container_stream_handler_construct(riid, ret, SOURCE_TYPE_ASF);
 }
 
+static GUID CLSID_CColorConvertDMO = {0x98230571,0x0087,0x4204,{0xb0,0x20,0x32,0x82,0x53,0x8e,0x57,0xd3}};
+
 static const struct class_object
 {
     const GUID *clsid;
@@ -442,6 +444,7 @@ class_objects[] =
     { &CLSID_CWMVDecMediaObject, &wmv_decoder_create },
     { &CLSID_MPEG4ByteStreamHandler, &mp4_stream_handler_create },
     { &CLSID_ASFByteStreamHandler, &asf_stream_handler_create },
+    { &CLSID_CColorConvertDMO, &color_converter_create },
 };
 
 HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
@@ -473,6 +476,26 @@ HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
     return CLASS_E_CLASSNOTAVAILABLE;
 }
 
+static WCHAR color_converterW[] = {'C','o','l','o','r',' ','C','o','n','v','e','r','t','e','r',0};
+
+const GUID *color_converter_supported_types[] =
+{
+    &MFVideoFormat_RGB24,
+    &MFVideoFormat_RGB32,
+    &MFVideoFormat_RGB555,
+    &MFVideoFormat_RGB8,
+    &MFVideoFormat_AYUV,
+    &MFVideoFormat_I420,
+    &MFVideoFormat_IYUV,
+    &MFVideoFormat_NV11,
+    &MFVideoFormat_NV12,
+    &MFVideoFormat_UYVY,
+    &MFVideoFormat_v216,
+    &MFVideoFormat_v410,
+    &MFVideoFormat_YUY2,
+    &MFVideoFormat_YVYU,
+    &MFVideoFormat_YVYU,
+};
 
 static WCHAR h264decoderW[] = {'H','.','2','6','4',' ','D','e','c','o','d','e','r',0};
 const GUID *h264_decoder_input_types[] =
@@ -538,6 +561,18 @@ static const struct mft
 }
 mfts[] =
 {
+    {
+        &CLSID_CColorConvertDMO,
+        &MFT_CATEGORY_VIDEO_EFFECT,
+        color_converterW,
+        MFT_ENUM_FLAG_SYNCMFT,
+        &MFMediaType_Video,
+        ARRAY_SIZE(color_converter_supported_types),
+        color_converter_supported_types,
+        ARRAY_SIZE(color_converter_supported_types),
+        color_converter_supported_types,
+        NULL
+    },
     {
         &CLSID_CMSH264DecoderMFT,
         &MFT_CATEGORY_VIDEO_DECODER,
