@@ -1038,6 +1038,7 @@ static HRESULT media_stream_constructor(struct media_source *source, GstPad *pad
     g_object_set(object->appsink, "emit-signals", TRUE, NULL);
     g_object_set(object->appsink, "sync", FALSE, NULL);
     g_object_set(object->appsink, "async", FALSE, NULL); /* <- This allows us interact with the bin w/o prerolling */
+    g_object_set(object->appsink, "wait-on-eos", FALSE, NULL);
     g_signal_connect(object->appsink, "new-sample", G_CALLBACK(stream_new_sample_wrapper), object);
 
     if (FAILED(hr = media_stream_align_with_mf(object, &stream_type)))
