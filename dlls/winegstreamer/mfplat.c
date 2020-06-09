@@ -910,6 +910,8 @@ static IMFMediaType* transform_to_media_type(GstCaps *caps)
             {
                 if (!(strcmp(format, "WVC1")))
                     IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_WVC1);
+                else if (!(strcmp(format, "WMV3")))
+                    IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_WMV3);
                 else
                     FIXME("Unrecognized format %s\n", format);
             }
