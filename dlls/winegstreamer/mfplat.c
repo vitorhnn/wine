@@ -1319,6 +1319,15 @@ GstCaps *caps_from_mf_media_type(IMFMediaType *type)
 
             user_data_to_codec_data(type, output);
         }
+        else if (IsEqualGUID(&subtype, &MFVideoFormat_WMV3))
+        {
+            output = gst_caps_new_empty_simple("video/x-wmv");
+            gst_caps_set_simple(output, "format", G_TYPE_STRING, "WMV3", NULL);
+
+            gst_caps_set_simple(output, "wmvversion", G_TYPE_INT, 3, NULL);
+
+            user_data_to_codec_data(type, output);
+        }
         else {
             FIXME("Unrecognized subtype %s\n", debugstr_guid(&subtype));
             return NULL;
