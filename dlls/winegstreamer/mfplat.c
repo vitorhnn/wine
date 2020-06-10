@@ -516,9 +516,9 @@ const GUID *h264_decoder_input_types[] =
 };
 const GUID *h264_decoder_output_types[] =
 {
+    &MFVideoFormat_NV12,
     &MFVideoFormat_I420,
     &MFVideoFormat_IYUV,
-    &MFVideoFormat_NV12,
     &MFVideoFormat_YUY2,
     &MFVideoFormat_YV12,
 };
