@@ -18,6 +18,7 @@
 
 #define COBJMACROS
 
+#include "mfapi.h"
 #include "mf_private.h"
 #include "mferror.h"
 
@@ -29,7 +30,9 @@ struct video_renderer
 {
     IMFMediaSink IMFMediaSink_iface;
     IMFStreamSink IMFStreamSink_iface;
+    IMFMediaTypeHandler IMFMediaTypeHandler_iface;
     LONG refcount;
+    IMFMediaType *media_type;
     BOOL is_shut_down;
     CRITICAL_SECTION cs;
     HWND target_hwnd;
@@ -43,6 +46,11 @@ static struct video_renderer *impl_from_IMFMediaSink(IMFMediaSink *iface)
 static struct video_renderer *impl_from_IMFStreamSink(IMFStreamSink *iface)
 {
     return CONTAINING_RECORD(iface, struct video_renderer, IMFStreamSink_iface);
+}
+
+static struct video_renderer *impl_from_IMFMediaTypeHandler(IMFMediaTypeHandler *iface)
+{
+    return CONTAINING_RECORD(iface, struct video_renderer, IMFMediaTypeHandler_iface);
 }
 
 static HRESULT WINAPI video_renderer_sink_QueryInterface(IMFMediaSink *iface, REFIID riid, void **obj)
@@ -262,6 +270,10 @@ static HRESULT WINAPI video_renderer_stream_QueryInterface(IMFStreamSink *iface,
     {
         *obj = &renderer->IMFStreamSink_iface;
     }
+    else if (IsEqualGUID(riid, &IID_IMFMediaTypeHandler))
+    {
+        *obj = &renderer->IMFMediaTypeHandler_iface;
+    }
     else
     {
         WARN("Unknown iface %s.\n", debugstr_guid(riid));
@@ -354,9 +366,23 @@ static HRESULT WINAPI video_renderer_stream_GetIdentifier(IMFStreamSink *iface, 
 
 static HRESULT WINAPI video_renderer_stream_GetMediaTypeHandler(IMFStreamSink *iface, IMFMediaTypeHandler **handler)
 {
-    FIXME("%p, %p stub!\n", iface, handler);
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+    TRACE("%p, %p.\n", iface, handler);
 
-    return E_NOTIMPL;
+    if (!handler)
+    {
+        return E_POINTER;
+    }
+
+    if (renderer->is_shut_down)
+    {
+        return MF_E_STREAMSINK_REMOVED;
+    }
+
+    *handler = &renderer->IMFMediaTypeHandler_iface;
+    IMFMediaTypeHandler_AddRef(*handler);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI video_renderer_stream_ProcessSample(IMFStreamSink *iface, IMFSample *sample)
@@ -398,6 +424,155 @@ static const IMFStreamSinkVtbl video_renderer_stream_vtbl =
     video_renderer_stream_Flush,
 };
 
+static HRESULT WINAPI video_renderer_stream_type_handler_QueryInterface(IMFMediaTypeHandler *iface, REFIID riid, void **obj)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+
+    return IMFStreamSink_QueryInterface(&renderer->IMFStreamSink_iface, riid, obj);
+}
+
+static ULONG WINAPI video_renderer_stream_type_handler_AddRef(IMFMediaTypeHandler *iface)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+
+    return IMFStreamSink_AddRef(&renderer->IMFStreamSink_iface);
+}
+
+static ULONG WINAPI video_renderer_stream_type_handler_Release(IMFMediaTypeHandler *iface)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+
+    return IMFStreamSink_Release(&renderer->IMFStreamSink_iface);
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_IsMediaTypeSuported(IMFMediaTypeHandler *iface,
+        IMFMediaType *in_type, IMFMediaType **out_type)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+    DWORD flags;
+    HRESULT hr;
+
+    TRACE("%p, %p, %p.\n", iface, in_type, out_type);
+
+    if (out_type)
+    {
+        *out_type = NULL;
+    }
+
+    if (!in_type)
+    {
+        return E_POINTER;
+    }
+
+    EnterCriticalSection(&renderer->cs);
+
+    hr = renderer->media_type &&
+            IMFMediaType_IsEqual(renderer->media_type, in_type, &flags) == S_OK ?
+            S_OK : MF_E_INVALIDREQUEST;
+
+    LeaveCriticalSection(&renderer->cs);
+
+    return hr;
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_GetMediaTypeCount(IMFMediaTypeHandler *iface,
+        DWORD *count)
+{
+    TRACE("%p, %p.\n", iface, count);
+
+    if (!count)
+    {
+        return E_POINTER;
+    }
+
+    *count = 1;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_GetMediaTypeByIndex(IMFMediaTypeHandler *iface,
+        DWORD index, IMFMediaType **type)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+
+    TRACE("%p, %d.\n", iface, index);
+
+    if (index > 0)
+    {
+        return MF_E_NO_MORE_TYPES;
+    }
+
+    *type = renderer->media_type;
+    IMFMediaType_AddRef(*type);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_SetCurrentMediaType(IMFMediaTypeHandler *iface,
+        IMFMediaType *type)
+{
+    FIXME("%p, %p stub!\n", iface, type);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_GetCurrentMediaType(IMFMediaTypeHandler *iface,
+        IMFMediaType **type)
+{
+    struct video_renderer *renderer = impl_from_IMFMediaTypeHandler(iface);
+    HRESULT hr = S_OK;
+
+    TRACE("%p, %p.\n", iface, type);
+
+    if (!type)
+    {
+        return E_POINTER;
+    }
+
+    EnterCriticalSection(&renderer->cs);
+
+    if (renderer->media_type)
+    {
+        *type = renderer->media_type;
+        IMFMediaType_AddRef(*type);
+    }
+    else
+    {
+        hr = MF_E_NOT_INITIALIZED;
+    }
+
+    LeaveCriticalSection(&renderer->cs);
+
+    return hr;
+}
+
+static HRESULT WINAPI video_renderer_stream_type_handler_GetMajorType(IMFMediaTypeHandler *iface, GUID *type)
+{
+    TRACE("%p, %p.\n", iface, type);
+
+    if (!type)
+    {
+        return E_POINTER;
+    }
+
+    memcpy(type, &MFMediaType_Video, sizeof(*type));
+
+    return S_OK;
+}
+
+static const IMFMediaTypeHandlerVtbl video_renderer_stream_type_handler_vtbl =
+{
+    video_renderer_stream_type_handler_QueryInterface,
+    video_renderer_stream_type_handler_AddRef,
+    video_renderer_stream_type_handler_Release,
+    video_renderer_stream_type_handler_IsMediaTypeSuported,
+    video_renderer_stream_type_handler_GetMediaTypeCount,
+    video_renderer_stream_type_handler_GetMediaTypeByIndex,
+    video_renderer_stream_type_handler_SetCurrentMediaType,
+    video_renderer_stream_type_handler_GetCurrentMediaType,
+    video_renderer_stream_type_handler_GetMajorType,
+};
+
 static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, IUnknown **obj)
 {
     struct video_renderer *renderer;
@@ -409,6 +584,7 @@ static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, 
 
     renderer->IMFMediaSink_iface.lpVtbl = &video_renderer_sink_vtbl;
     renderer->IMFStreamSink_iface.lpVtbl = &video_renderer_stream_vtbl;
+    renderer->IMFMediaTypeHandler_iface.lpVtbl = &video_renderer_stream_type_handler_vtbl;
     renderer->target_hwnd = user_context;
     renderer->refcount = 1;
     renderer->is_shut_down = FALSE;
