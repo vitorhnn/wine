@@ -19,6 +19,7 @@
 #define COBJMACROS
 
 #include "mf_private.h"
+#include "mferror.h"
 
 #include "wine/debug.h"
 
@@ -28,6 +29,8 @@ struct video_renderer
 {
     IMFMediaSink IMFMediaSink_iface;
     LONG refcount;
+    BOOL is_shut_down;
+    CRITICAL_SECTION cs;
     HWND target_hwnd;
 };
 
@@ -76,7 +79,7 @@ static ULONG WINAPI video_renderer_sink_Release(IMFMediaSink *iface)
 
     if (!refcount)
     {
-        FIXME("stub!\n");
+        DeleteCriticalSection(&renderer->cs);
         heap_free(renderer);
     }
 
@@ -95,25 +98,37 @@ static HRESULT WINAPI video_renderer_sink_AddStreamSink(IMFMediaSink *iface, DWO
         IMFMediaType *media_type, IMFStreamSink **stream_sink)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %#x, %p, %p stub!\n", iface, stream_sink_id, media_type, stream_sink);
+    TRACE("%p, %#x, %p, %p.\n", iface, stream_sink_id, media_type, stream_sink);
 
-    return E_NOTIMPL;
+    return renderer->is_shut_down ? MF_E_SHUTDOWN : MF_E_STREAMSINKS_FIXED;
 }
 
 static HRESULT WINAPI video_renderer_sink_RemoveStreamSink(IMFMediaSink *iface, DWORD stream_sink_id)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %#x stub!\n", iface, stream_sink_id);
+    TRACE("%p, %#x.\n", iface, stream_sink_id);
 
-    return E_NOTIMPL;
+    return renderer->is_shut_down ? MF_E_SHUTDOWN : MF_E_STREAMSINKS_FIXED;
 }
 
 static HRESULT WINAPI video_renderer_sink_GetStreamSinkCount(IMFMediaSink *iface, DWORD *count)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %p stub!\n", iface, count);
+    TRACE("%p, %p.\n", iface, count);
 
-    return E_NOTIMPL;
+    if (!count)
+    {
+        return E_POINTER;
+    }
+
+    if (renderer->is_shut_down)
+    {
+        return MF_E_SHUTDOWN;
+    }
+
+    *count = 1
+
+    return S_OK;
 }
 
 static HRESULT WINAPI video_renderer_sink_GetStreamSinkByIndex(IMFMediaSink *iface, DWORD index,
@@ -153,9 +168,18 @@ static HRESULT WINAPI video_renderer_sink_GetPresentationClock(IMFMediaSink *ifa
 static HRESULT WINAPI video_renderer_sink_Shutdown(IMFMediaSink *iface)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p stub!\n", iface);
+    TRACE("%p.\n", iface);
 
-    return E_NOTIMPL;
+    if (renderer->is_shut_down)
+    {
+        return MF_E_SHUTDOWN;
+    }
+
+    EnterCriticalSection(&renderer->cs);
+    renderer->is_shut_down = TRUE;
+    LeaveCriticalSection(&renderer->cs);
+
+    return S_OK;
 }
 
 static const IMFMediaSinkVtbl video_renderer_sink_vtbl =
@@ -186,6 +210,8 @@ static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, 
     renderer->IMFMediaSink_iface.lpVtbl = &video_renderer_sink_vtbl;
     renderer->target_hwnd = user_context;
     renderer->refcount = 1;
+    renderer->is_shut_down = FALSE;
+    InitializeCriticalSection(&renderer->cs);
 
     *obj = (IUnknown *) &renderer->IMFMediaSink_iface;
 
