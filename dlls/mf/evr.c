@@ -28,6 +28,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 struct video_renderer
 {
     IMFMediaSink IMFMediaSink_iface;
+    IMFStreamSink IMFStreamSink_iface;
     LONG refcount;
     BOOL is_shut_down;
     CRITICAL_SECTION cs;
@@ -37,6 +38,11 @@ struct video_renderer
 static struct video_renderer *impl_from_IMFMediaSink(IMFMediaSink *iface)
 {
     return CONTAINING_RECORD(iface, struct video_renderer, IMFMediaSink_iface);
+}
+
+static struct video_renderer *impl_from_IMFStreamSink(IMFStreamSink *iface)
+{
+    return CONTAINING_RECORD(iface, struct video_renderer, IMFStreamSink_iface);
 }
 
 static HRESULT WINAPI video_renderer_sink_QueryInterface(IMFMediaSink *iface, REFIID riid, void **obj)
@@ -89,9 +95,16 @@ static ULONG WINAPI video_renderer_sink_Release(IMFMediaSink *iface)
 static HRESULT WINAPI video_renderer_sink_GetCharacteristics(IMFMediaSink *iface, DWORD *flags)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %p stub!\n", iface, flags);
+    TRACE("%p, %p.\n", iface, flags);
 
-    return E_NOTIMPL;
+    if (renderer->is_shut_down)
+    {
+        return MF_E_SHUTDOWN;
+    }
+
+    *flags = MEDIASINK_FIXED_STREAMS;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI video_renderer_sink_AddStreamSink(IMFMediaSink *iface, DWORD stream_sink_id,
@@ -126,7 +139,7 @@ static HRESULT WINAPI video_renderer_sink_GetStreamSinkCount(IMFMediaSink *iface
         return MF_E_SHUTDOWN;
     }
 
-    *count = 1
+    *count = 1;
 
     return S_OK;
 }
@@ -135,18 +148,58 @@ static HRESULT WINAPI video_renderer_sink_GetStreamSinkByIndex(IMFMediaSink *ifa
         IMFStreamSink **stream)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %u, %p stub!\n", iface, index, stream);
+    HRESULT hr = S_OK;
 
-    return E_NOTIMPL;
+    TRACE("%p, %u, %p.\n", iface, index, stream);
+
+    EnterCriticalSection(&renderer->cs);
+
+    if (renderer->is_shut_down)
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else if (index > 0)
+    {
+        hr = MF_E_INVALIDINDEX;
+    }
+    else
+    {
+        *stream = &renderer->IMFStreamSink_iface;
+        IMFStreamSink_AddRef(*stream);
+    }
+
+    LeaveCriticalSection(&renderer->cs);
+
+    return hr;
 }
 
 static HRESULT WINAPI video_renderer_sink_GetStreamSinkById(IMFMediaSink *iface, DWORD stream_sink_id,
         IMFStreamSink **stream)
 {
     struct video_renderer *renderer = impl_from_IMFMediaSink(iface);
-    FIXME("%p, %#x, %p stub!\n", iface, stream_sink_id, stream);
+    HRESULT hr = S_OK;
 
-    return E_NOTIMPL;
+    TRACE("%p, %u, %p.\n", iface, stream_sink_id, stream);
+
+    EnterCriticalSection(&renderer->cs);
+
+    if (renderer->is_shut_down)
+    {
+        hr = MF_E_SHUTDOWN;
+    }
+    else if (stream_sink_id > 0)
+    {
+        hr = MF_E_INVALIDSTREAMNUMBER;
+    }
+    else
+    {
+        *stream = &renderer->IMFStreamSink_iface;
+        IMFStreamSink_AddRef(*stream);
+    }
+
+    LeaveCriticalSection(&renderer->cs);
+
+    return hr;
 }
 
 static HRESULT WINAPI video_renderer_sink_SetPresentationClock(IMFMediaSink *iface, IMFPresentationClock *clock)
@@ -198,6 +251,153 @@ static const IMFMediaSinkVtbl video_renderer_sink_vtbl =
     video_renderer_sink_Shutdown,
 };
 
+static HRESULT WINAPI video_renderer_stream_QueryInterface(IMFStreamSink *iface, REFIID riid, void **obj)
+{
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+
+    TRACE("%p, %s, %p.\n", iface, debugstr_guid(riid), obj);
+
+    if (IsEqualGUID(riid, &IID_IMFStreamSink) ||
+            IsEqualGUID(riid, &IID_IUnknown))
+    {
+        *obj = &renderer->IMFStreamSink_iface;
+    }
+    else
+    {
+        WARN("Unknown iface %s.\n", debugstr_guid(riid));
+        *obj = NULL;
+        return E_NOINTERFACE;
+    }
+
+    IUnknown_AddRef((IUnknown *)*obj);
+
+    return S_OK;
+}
+
+static ULONG WINAPI video_renderer_stream_AddRef(IMFStreamSink *iface)
+{
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+    return IMFMediaSink_AddRef(&renderer->IMFMediaSink_iface);
+}
+
+static ULONG WINAPI video_renderer_stream_Release(IMFStreamSink *iface)
+{
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+    return IMFMediaSink_Release(&renderer->IMFMediaSink_iface);
+}
+
+static HRESULT WINAPI video_renderer_stream_GetEvent(IMFStreamSink *iface, DWORD flags, IMFMediaEvent **event)
+{
+    FIXME("%p, %#x, %p stub!\n", iface, flags, event);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_BeginGetEvent(IMFStreamSink *iface, IMFAsyncCallback *callback,
+        IUnknown *state)
+{
+    FIXME("%p, %p, %p stub!\n", iface, callback, state);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_EndGetEvent(IMFStreamSink *iface, IMFAsyncResult *result,
+        IMFMediaEvent **event)
+{
+    FIXME("%p, %p, %p stub!\n", iface, result, event);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_QueueEvent(IMFStreamSink *iface, MediaEventType event_type,
+        REFGUID ext_type, HRESULT hr, const PROPVARIANT *value)
+{
+    FIXME("%p, %u, %s, %#x, %p stub!\n", iface, event_type, debugstr_guid(ext_type), hr, value);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_GetMediaSink(IMFStreamSink *iface, IMFMediaSink **sink)
+{
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+
+    TRACE("%p, %p.\n", iface, sink);
+
+    if (renderer->is_shut_down)
+    {
+        /* could also return MF_E_SHUTDOWN here */
+        return MF_E_STREAMSINK_REMOVED;
+    }
+
+    *sink = &renderer->IMFMediaSink_iface;
+    IMFMediaSink_AddRef(*sink);
+
+    return S_OK;
+}
+
+static HRESULT WINAPI video_renderer_stream_GetIdentifier(IMFStreamSink *iface, DWORD *identifier)
+{
+    struct video_renderer *renderer = impl_from_IMFStreamSink(iface);
+
+    TRACE("%p, %p.\n", iface, identifier);
+
+    if (renderer->is_shut_down)
+    {
+        /* could also return MF_E_SHUTDOWN here */
+        return MF_E_STREAMSINK_REMOVED;
+    }
+
+    *identifier = 0;
+
+    return S_OK;
+}
+
+static HRESULT WINAPI video_renderer_stream_GetMediaTypeHandler(IMFStreamSink *iface, IMFMediaTypeHandler **handler)
+{
+    FIXME("%p, %p stub!\n", iface, handler);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_ProcessSample(IMFStreamSink *iface, IMFSample *sample)
+{
+    FIXME("%p, %p stub!\n", iface, sample);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_PlaceMarker(IMFStreamSink *iface, MFSTREAMSINK_MARKER_TYPE marker_type,
+        const PROPVARIANT *marker_value, const PROPVARIANT *context_value)
+{
+    FIXME("%p, %d, %p, %p stub!\n", iface, marker_type, marker_value, context_value);
+
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI video_renderer_stream_Flush(IMFStreamSink *iface)
+{
+    FIXME("%p stub!\n", iface);
+
+    return E_NOTIMPL;
+}
+
+static const IMFStreamSinkVtbl video_renderer_stream_vtbl =
+{
+    video_renderer_stream_QueryInterface,
+    video_renderer_stream_AddRef,
+    video_renderer_stream_Release,
+    video_renderer_stream_GetEvent,
+    video_renderer_stream_BeginGetEvent,
+    video_renderer_stream_EndGetEvent,
+    video_renderer_stream_QueueEvent,
+    video_renderer_stream_GetMediaSink,
+    video_renderer_stream_GetIdentifier,
+    video_renderer_stream_GetMediaTypeHandler,
+    video_renderer_stream_ProcessSample,
+    video_renderer_stream_PlaceMarker,
+    video_renderer_stream_Flush,
+};
+
 static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, IUnknown **obj)
 {
     struct video_renderer *renderer;
@@ -208,6 +408,7 @@ static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, 
         return E_OUTOFMEMORY;
 
     renderer->IMFMediaSink_iface.lpVtbl = &video_renderer_sink_vtbl;
+    renderer->IMFStreamSink_iface.lpVtbl = &video_renderer_stream_vtbl;
     renderer->target_hwnd = user_context;
     renderer->refcount = 1;
     renderer->is_shut_down = FALSE;
