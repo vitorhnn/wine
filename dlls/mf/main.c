@@ -976,38 +976,6 @@ HRESULT WINAPI MFEnumDeviceSources(IMFAttributes *attributes, IMFActivate ***sou
     return S_OK;
 }
 
-static HRESULT evr_create_object(IMFAttributes *attributes, void *user_context, IUnknown **obj)
-{
-    FIXME("%p, %p, %p.\n", attributes, user_context, obj);
-
-    return E_NOTIMPL;
-}
-
-static void evr_shutdown_object(void *user_context, IUnknown *obj)
-{
-}
-
-static void evr_free_private(void *user_context)
-{
-}
-
-static const struct activate_funcs evr_activate_funcs =
-{
-    evr_create_object,
-    evr_shutdown_object,
-    evr_free_private,
-};
-
-HRESULT WINAPI MFCreateVideoRendererActivate(HWND hwnd, IMFActivate **activate)
-{
-    TRACE("%p, %p.\n", hwnd, activate);
-
-    if (!activate)
-        return E_POINTER;
-
-    return create_activation_object(hwnd, &evr_activate_funcs, activate);
-}
-
 struct simple_type_handler
 {
     IMFMediaTypeHandler IMFMediaTypeHandler_iface;

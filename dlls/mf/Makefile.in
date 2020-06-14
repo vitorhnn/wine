@@ -10,7 +10,8 @@ C_SRCS = \
 	samplegrabber.c \
 	sar.c \
 	session.c \
-	topology.c
+	topology.c \
+	evr.c
 
 IDL_SRCS = mf.idl
 
